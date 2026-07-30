@@ -333,7 +333,8 @@ and `Rumble: OFF`. Logs rotate at 5 MiB with four retained files.
 
 ## Build
 
-The .NET 8 x64 SDK is required.
+The .NET 8 x64 SDK is required. `global.json` pins the tested 8.0.423 feature
+band and permits later patches in that band.
 
 ```powershell
 .\build.ps1

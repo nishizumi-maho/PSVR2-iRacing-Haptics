@@ -23,6 +23,9 @@ That one command restores dependencies, builds the complete solution, runs the
 test executable, publishes a self-contained `win-x64` application, creates the
 portable ZIP and writes its SHA-256 file.
 
+`global.json` selects the tested .NET 8.0.423 SDK feature band. Install that
+SDK (or a later 8.0.4xx patch) even if a newer major SDK is already present.
+
 For a faster source run:
 
 ```powershell
