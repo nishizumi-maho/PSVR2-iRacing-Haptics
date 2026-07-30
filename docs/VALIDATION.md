@@ -71,6 +71,9 @@ The following remain real-hardware responsibilities:
 - tune thresholds across real car/track combinations;
 - evaluate coexistence with any other C API rumble client.
 
+The executable is not Authenticode-signed. The release provides a SHA-256
+sidecar for integrity verification, not publisher authentication.
+
 The reproducible physical procedure and evidence checklist are in
 [HARDWARE_TEST.md](HARDWARE_TEST.md). No physical validation is implied by the
 automated test result.

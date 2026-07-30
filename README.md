@@ -40,6 +40,11 @@ installation. Because it includes `portable.mode`, settings, logs and
 recordings are stored in the `data` folder beside the executable. If that file
 is removed, data is stored under `%LOCALAPPDATA%\PSVR2iRacingHaptics`.
 
+The executable is not Authenticode-signed, because this project does not have a
+code-signing certificate. Windows may display an Unknown publisher/SmartScreen
+warning. Download only from this repository's Releases page and verify the
+provided `.sha256` sidecar before running it.
+
 ## Quick start
 
 1. Start PSVR2 Toolkit and SteamVR normally.

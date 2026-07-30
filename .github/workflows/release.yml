@@ -57,7 +57,18 @@ jobs:
         shell: pwsh
         run: ./build.ps1 -Configuration Release -Runtime win-x64
 
-      - name: Create signed-off release
+      - name: Retain validated release package
+        if: steps.existing.outputs.exists != 'True'
+        uses: actions/upload-artifact@v7
+        with:
+          name: PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-portable
+          path: |
+            build/PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-portable.zip
+            build/PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-portable.zip.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create GitHub release
         if: steps.existing.outputs.exists != 'True'
         shell: pwsh
         env:
