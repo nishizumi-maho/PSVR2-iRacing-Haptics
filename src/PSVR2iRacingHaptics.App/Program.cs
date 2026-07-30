@@ -5,7 +5,36 @@ namespace PSVR2iRacingHaptics.App;
 internal static class Program
 {
     [STAThread]
-    private static async Task Main(string[] args)
+    private static async Task<int> Main(string[] args)
+    {
+        try
+        {
+            await RunAsync(args);
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            var crashLog = StartupFailureReporter.Write(exception, args);
+            try
+            {
+                MessageBox.Show(
+                    "The application could not start.\n\n"
+                    + "A diagnostic report was written to:\n"
+                    + crashLog,
+                    "PSVR2 iRacing Haptics",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            catch
+            {
+                // A startup failure must still return a non-zero exit code if
+                // Windows cannot display the diagnostic message.
+            }
+            return 1;
+        }
+    }
+
+    private static async Task RunAsync(string[] args)
     {
         ApplicationConfiguration.Initialize();
 
