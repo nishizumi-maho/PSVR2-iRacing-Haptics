@@ -152,7 +152,7 @@ public sealed class MainForm : Form
     public MainForm(AppCoordinator coordinator)
     {
         _coordinator = coordinator;
-        Text = "PSVR2 iRacing Haptics 1.1";
+        Text = $"PSVR2 iRacing Haptics {Application.ProductVersion}";
         MinimumSize = new Size(950, 700);
         Size = new Size(1160, 820);
         StartPosition = FormStartPosition.CenterScreen;
