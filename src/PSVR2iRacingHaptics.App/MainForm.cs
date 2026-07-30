@@ -1180,7 +1180,8 @@ public sealed class MainForm : Form
 
     private void ConfigureNotificationIcon()
     {
-        _notifyIcon.Icon = (System.Drawing.Icon)Icon.Clone();
+        var windowIcon = Icon ?? SystemIcons.Application;
+        _notifyIcon.Icon = (System.Drawing.Icon)windowIcon.Clone();
         _notifyIcon.Text = "PSVR2 iRacing Haptics";
         _notifyIcon.Visible = false;
         _notifyIcon.DoubleClick += (_, _) => ShowFromNotificationArea();
