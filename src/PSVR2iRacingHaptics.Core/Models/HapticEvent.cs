@@ -13,7 +13,11 @@ public enum HapticEventKind
     StrongKerb,
     WheelDrop,
     Landing,
-    SevereVerticalCompression
+    SevereVerticalCompression,
+    Incident1x,
+    Incident2x,
+    Incident4x,
+    IncidentOther
 }
 
 public enum EventSeverity
@@ -34,6 +38,20 @@ public enum ImpactDirection
     Rollover
 }
 
+/// <summary>
+/// Best-effort incident classification derived from telemetry around an
+/// incident-count change. iRacing exposes the point count, not a direct cause.
+/// </summary>
+public enum IncidentType
+{
+    NotApplicable = 0,
+    Unknown,
+    OffTrack,
+    LossOfControl,
+    Contact,
+    Rollover
+}
+
 public sealed record DetectedHapticEvent(
     DateTimeOffset Timestamp,
     HapticEventKind Kind,
@@ -42,7 +60,12 @@ public sealed record DetectedHapticEvent(
     int Priority,
     ImpactDirection Direction,
     string Reason,
-    ProcessedTelemetry Diagnostics);
+    ProcessedTelemetry Diagnostics)
+{
+    public int IncidentPoints { get; init; }
+    public IncidentType IncidentType { get; init; } = IncidentType.NotApplicable;
+    public bool HasRelatedPhysicalEvent { get; init; }
+}
 
 public sealed record DetectionResult(
     DetectedHapticEvent? Event,
@@ -80,6 +103,7 @@ public sealed record ProcessedTelemetry
     public bool WheelLockLikely { get; init; }
     public bool BrakeRecentlyActive { get; init; }
     public bool IncidentIncreased { get; init; }
+    public int IncidentPointDelta { get; init; }
     public double ImpactScore { get; init; }
     public double VerticalScore { get; init; }
 }

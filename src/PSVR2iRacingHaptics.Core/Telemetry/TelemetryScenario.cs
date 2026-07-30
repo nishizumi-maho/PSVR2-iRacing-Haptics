@@ -16,6 +16,9 @@ public enum TelemetryScenario
     FrontImpact,
     StrongCollision,
     Rollover,
+    OffTrackIncident1x,
+    LossOfControlIncident2x,
+    ContactIncident4x,
     ConnectionLoss
 }
 
@@ -192,6 +195,45 @@ public static class TelemetryScenarioFactory
                 });
                 break;
 
+            case TelemetryScenario.OffTrackIncident1x:
+                Add(24, index => BaseFrame(
+                    timestamp,
+                    sequence,
+                    speed,
+                    index >= 10 ? 1 : incident) with
+                {
+                    PlayerTrackSurface = index is >= 3 and <= 18 ? 0 : 3,
+                    LatAccelMps2 = index is >= 3 and <= 8 ? 4.5f : 0
+                });
+                break;
+
+            case TelemetryScenario.LossOfControlIncident2x:
+                Add(26, index => BaseFrame(
+                    timestamp,
+                    sequence,
+                    Math.Max(12, speed - 0.35f),
+                    index >= 12 ? 2 : incident) with
+                {
+                    YawRateRadPerSec = index is >= 4 and <= 14 ? 2.2f : 0,
+                    LatAccelMps2 = index is >= 4 and <= 14 ? 2.0f : 0,
+                    PlayerTrackSurface = 3
+                });
+                break;
+
+            case TelemetryScenario.ContactIncident4x:
+                Add(18, index => BaseFrame(
+                    timestamp,
+                    sequence,
+                    index >= 7 ? Math.Max(0, speed - 6f) : speed,
+                    index >= 7 ? 4 : incident) with
+                {
+                    LatAccelMps2 = index == 7 ? 68f : 0,
+                    LongAccelMps2 = index == 7 ? -52f : 0,
+                    YawRateRadPerSec = index == 7 ? 2.4f : 0,
+                    PlayerTrackSurface = 3
+                });
+                break;
+
             case TelemetryScenario.ConnectionLoss:
                 Add(20, _ => TelemetryFrame.Disconnected(timestamp));
                 break;
@@ -217,9 +259,24 @@ public static class TelemetryScenarioFactory
             IsInGarage = false,
             IsReplayPlaying = false,
             SessionState = 4,
+            Context = new TelemetryContext
+            {
+                SessionInfoUpdate = 1,
+                DriverCarIdx = 0,
+                CarId = 9001,
+                CarClassId = 900,
+                CarPath = "simulator/test-car",
+                CarName = "Simulator GT",
+                CarClass = "Simulator",
+                TrackId = 8001,
+                TrackName = "haptics_test_track",
+                TrackDisplayName = "Haptics Test Track",
+                TrackConfigName = "Full Course"
+            },
             SpeedMps = speed,
             VertAccelMps2 = (float)TelemetrySignalProcessor.GravityMps2,
             IncidentCount = incident,
+            PlayerTrackSurface = 3,
             LfWheelSpeedMps = speed,
             RfWheelSpeedMps = speed,
             LrWheelSpeedMps = speed,

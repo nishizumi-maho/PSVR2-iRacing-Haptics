@@ -1,5 +1,8 @@
 # PSVR2 iRacing Haptics
 
+[![Validate and package](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/workflows/ci.yml/badge.svg)](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/nishizumi-maho/PSVR2-iRacing-Haptics)](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/releases/latest)
+
 An independent Windows companion app that converts iRacing telemetry into
 PlayStation VR2 headset rumble patterns through the
 [PSVR2 Toolkit](https://github.com/BnuuySolutions/PSVR2Toolkit) C API.
@@ -49,6 +52,7 @@ is removed, data is stored under `%LOCALAPPDATA%\PSVR2iRacingHaptics`.
 7. Open **Effects** and enable only the event categories you want to feel.
 8. Start iRacing and enter the car. Status should show `iRacing connected` and
    `Driver in car`.
+9. Keep the **Default** profile until you have a clean calibration recording.
 
 The manual test works without iRacing. The telemetry simulator can drive either
 the real headset or the fake rumble device:
@@ -71,12 +75,17 @@ for:
 - light kerbs, disabled by default;
 - landings;
 - wheel drops;
-- severe vertical compression.
+- severe vertical compression;
+- incident-point notifications as a separate master category;
+- 1x, 2x, 4x and other incident-point changes;
+- inferred off-track, loss-of-control, contact, rollover and unknown incident
+  types.
 
 Disabling an event prevents its rumble pattern from being sent. Detection,
 diagnostics and recording remain active, so a disabled effect can still be
-calibrated safely. Applying the Default, Gentle or Strong profile preserves the
-user's enabled/disabled choices.
+calibrated safely. Event choices are stored in the active profile, so different
+cars can intentionally enable different effects. The global master haptics
+switch, selected device and safety limits are not changed by a profile.
 
 ## Confirmed PSVR2 Toolkit behavior
 
@@ -146,7 +155,38 @@ wheel-contact bit or damage impulse, so classification is heuristic.
 The detector calculates a slow baseline, smoothed acceleration, deviation from
 the baseline, jerk on all three axes, deceleration, angular motion, suspension
 activity/asymmetry and temporal context. Incident count is only supporting
-evidence.
+evidence for physical-impact classification; a separate incident detector
+handles exact counter changes.
+
+The app also reads the slowly changing `SessionInfo` YAML block from the same
+shared-memory mapping. It extracts the current driver's `CarPath`, display
+name, class and IDs plus the circuit's `TrackName`, display name, ID and
+configuration. These values are used only for display and optional profile
+assignment rules.
+
+## Incident haptics
+
+`PlayerCarMyIncidentCount` is a cumulative integer. A positive counter delta is
+therefore an exact point change, and the app exposes separate events for 1x,
+2x, 4x and any other delta.
+
+The SDK does **not** expose an official incident cause beside that counter. The
+app labels an incident as off track, loss of control, contact, rollover or
+unknown by examining the preceding track-location, acceleration, rotation and
+physical-event evidence. These type labels are explicitly best-effort.
+
+Each profile controls:
+
+- the incident master switch;
+- point-value gates and inferred-type gates;
+- cooldown and evidence-window length;
+- duplicate suppression for related physical impacts;
+- whether the waveform is selected by exact point value or inferred type;
+- frequency, duration, pulse count and gap for every point/type waveform.
+
+Both the point gate and inferred-type gate must allow the event. By default,
+incident rumble is off and duplicate suppression is on; diagnostics and
+recording still receive every detected counter increase.
 
 ## Default rumble patterns
 
@@ -157,7 +197,11 @@ evidence.
 - strong kerb: 14 Hz for 110 ms;
 - wheel drop: 16 Hz for 130 ms;
 - landing: 19 Hz for 140 ms, 60 ms pause, then 15 Hz for 110 ms;
-- severe compression: 20 Hz for 150 ms.
+- severe compression: 20 Hz for 150 ms;
+- 1x incident: 12 Hz for 105 ms;
+- 2x incident: two 16 Hz pulses for 115 ms, separated by 65 ms;
+- 4x incident: 20 Hz for 150 ms, then a 16 Hz tail for 90 ms;
+- other incident delta: 14 Hz for 120 ms.
 
 Frequency is not treated as physical intensity. Effects are distinguished by
 frequency, duration, pulse count, spacing and optional tail.
@@ -168,9 +212,12 @@ rollover uses a double pulse. The default safety limits are 250 ms of continuous
 rumble and 550 ms for a complete effect. Light kerbs remain disabled and strong
 kerbs respect cooldown.
 
-Priority order: strong impact, rollover, medium impact, landing, severe
-compression, light impact, wheel drop and kerb. A stronger effect can replace a
-weaker one; a weaker effect cannot interrupt a stronger one.
+Priority order favors strong physical impacts and rollover, followed by medium
+impacts, 4x incidents, landing/compression, light impacts and lower-point
+incidents/vertical events. A stronger effect can replace a weaker one; a weaker
+effect cannot interrupt a stronger one. When duplicate protection is disabled,
+a related incident notification is queued after its physical effect instead of
+interrupting it.
 
 ## Calibration
 
@@ -194,13 +241,14 @@ Recommended workflow:
    braking and ordinary kerbs. The app should remain quiet.
 5. Open **Calibration & simulator** and start a JSONL recording.
 6. Reproduce one clear event at a time. Click `Mark impact`,
-   `Mark strong kerb` or `Mark landing` immediately after it happens.
+   `Mark strong kerb`, `Mark landing`, `Mark 1x`, `Mark 2x` or `Mark 4x`
+   immediately after it happens.
 7. Stop recording and click **Compare markers**.
-8. For a missed collision, lower only its matching collision threshold by
-   0.10–0.20. For a missed kerb or landing, lower the matching vertical
-   threshold by 0.10–0.20.
-9. If normal driving produces an event, raise the corresponding threshold by
-   the same amount.
+8. Review the bounded recommendation. A controlled miss proposes a threshold
+   8% below the observed peak; a marked false positive proposes an 8% margin
+   above its score. Conflicting evidence is never auto-applied.
+9. Incident markers validate counter handling and classification but do not
+   change physical thresholds automatically.
 10. Change one value at a time, save, and replay the same JSONL. Watch
     `Collision score` and `Vertical score` under **Diagnostics**.
 11. Once detection is reliable, tune frequency and duration for comfort.
@@ -208,8 +256,8 @@ Recommended workflow:
 
 Calibration results mean:
 
-- **Matched** — the current detector found the expected category within 500 ms
-  of a marker;
+- **Matched** — the current detector found the expected category from 2,000 ms
+  before the marker through 250 ms after it, allowing for reaction time;
 - **Missed** — a marker had no compatible detection, often because its
   threshold is too high;
 - **Unmarked detections** — the detector found events that were not marked,
@@ -222,17 +270,42 @@ is not required.
 
 Built-in scenarios cover a parked car, normal acceleration, hard braking, light
 and strong kerbs, wheel drop, landing, side impact, front impact, strong
-collision, rollover and connection loss.
+collision, rollover, 1x off track, 2x loss of control, 4x contact and connection
+loss.
 
-## Profiles
+## Profiles and automatic activation
+
+The four resettable factory profiles are:
 
 - **Default** — balanced starting point;
 - **Gentle** — higher thresholds and milder rumble;
-- **Strong** — lower thresholds and stronger rumble;
-- **Custom** — values edited in the UI.
+- **Strong** — lower thresholds and more pronounced rumble;
+- **Custom** — editable general-purpose starting point.
 
-Existing Portuguese profile names from versions 0.1.x are migrated
-automatically.
+Use **Profiles** to create a profile from the current setup, duplicate any
+profile, rename/delete user profiles, or reset a factory profile. Each profile
+stores collision and vertical thresholds, individual event switches, incident
+policy and every event waveform. Factory profiles cannot be renamed or deleted.
+
+Automatic activation is optional. A rule targets one profile and may contain
+any combination of:
+
+- `CarPath` (the most stable car identifier);
+- car display name;
+- car class;
+- `TrackName` (the most stable track identifier);
+- track configuration.
+
+Every populated field is an AND condition. `*` matches any sequence and `?`
+matches one character, both case-insensitively. Higher priority wins; an equal
+priority prefers the more specific rule and then the rule name for deterministic
+results. If no rule matches, the current profile stays active.
+
+Existing 0.1.x/0.2.0 settings and Portuguese factory-profile names are migrated
+without discarding customized detector/effect values.
+
+See [docs/PROFILES_AND_INCIDENTS.md](docs/PROFILES_AND_INCIDENTS.md) for rule
+examples, incident pattern modes, precedence and troubleshooting.
 
 ## Safety behavior
 
@@ -270,7 +343,7 @@ The script restores, builds, runs the test executable, publishes a
 self-contained `win-x64` app and creates:
 
 ```text
-build\PSVR2-iRacing-Haptics-v0.2.0-win-x64-portable.zip
+build\PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip
 ```
 
 Run from source on Windows:
@@ -299,6 +372,10 @@ PSVR2 or iRacing installation. Physical rumble, real headset presence and
 car-specific thresholds still require Windows hardware validation. Exact build
 and test results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
+GitHub Actions runs the same release script on Windows for every pull request.
+A successful merge to `main` creates the versioned GitHub release only if that
+version does not already exist.
+
 ## Project structure
 
 ```text
@@ -312,6 +389,13 @@ build
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component boundaries and
 failure flow.
+
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). It explains the development
+environment, safety invariants, code boundaries, how to add verified iRacing
+signals/events, required tests and the pull-request checklist. Please do not
+invent telemetry variable names or weaken any mandatory `0 Hz` shutdown path.
 
 ## License and trademarks
 

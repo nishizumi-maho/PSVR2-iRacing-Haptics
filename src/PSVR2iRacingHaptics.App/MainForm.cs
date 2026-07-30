@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using PSVR2iRacingHaptics.Core.Configuration;
 using PSVR2iRacingHaptics.Core.Models;
 using PSVR2iRacingHaptics.Core.Telemetry;
@@ -41,6 +42,59 @@ public sealed class MainForm : Form
     private readonly CheckBox _landingsEnabled = Check("Car landings");
     private readonly CheckBox _wheelDropsEnabled = Check("Wheel drops");
     private readonly CheckBox _compressionEnabled = Check("Severe vertical compression");
+    private readonly CheckBox _incidentEnabled = Check("Enable incident-point haptics");
+    private readonly ComboBox _incidentPatternBasis = new();
+    private readonly CheckBox _incident1xEnabled = Check("1x");
+    private readonly CheckBox _incident2xEnabled = Check("2x");
+    private readonly CheckBox _incident4xEnabled = Check("4x");
+    private readonly CheckBox _incidentOtherEnabled = Check("Other point changes");
+    private readonly CheckBox _incidentOffTrackEnabled = Check("Off track");
+    private readonly CheckBox _incidentLossOfControlEnabled = Check("Loss of control");
+    private readonly CheckBox _incidentContactEnabled = Check("Contact");
+    private readonly CheckBox _incidentRolloverEnabled = Check("Rollover");
+    private readonly CheckBox _incidentUnknownEnabled = Check("Unknown / unclassified");
+    private readonly CheckBox _incidentSuppressPhysical = Check(
+        "Suppress duplicate notification when a related physical impact is detected");
+    private readonly NumericUpDown _incidentCooldown = Number(50, 5000, 650, 10);
+    private readonly NumericUpDown _incidentEvidenceWindow = Number(250, 5000, 1400, 50);
+    private readonly NumericUpDown _incident1xFreq = Number(0, 25, 12);
+    private readonly NumericUpDown _incident1xDuration = Number(10, 1000, 105, 5);
+    private readonly NumericUpDown _incident1xPulses = Number(1, 8, 1);
+    private readonly NumericUpDown _incident1xGap = Number(0, 1000, 0, 5);
+    private readonly NumericUpDown _incident2xFreq = Number(0, 25, 16);
+    private readonly NumericUpDown _incident2xDuration = Number(10, 1000, 115, 5);
+    private readonly NumericUpDown _incident2xPulses = Number(1, 8, 2);
+    private readonly NumericUpDown _incident2xGap = Number(0, 1000, 65, 5);
+    private readonly NumericUpDown _incident4xFreq = Number(0, 25, 20);
+    private readonly NumericUpDown _incident4xDuration = Number(10, 1000, 150, 5);
+    private readonly NumericUpDown _incident4xPulses = Number(1, 8, 1);
+    private readonly NumericUpDown _incident4xGap = Number(0, 1000, 55, 5);
+    private readonly NumericUpDown _incident4xTailFreq = Number(0, 25, 16);
+    private readonly NumericUpDown _incident4xTailDuration = Number(0, 1000, 90, 5);
+    private readonly NumericUpDown _incidentOtherFreq = Number(0, 25, 14);
+    private readonly NumericUpDown _incidentOtherDuration = Number(10, 1000, 120, 5);
+    private readonly NumericUpDown _incidentOtherPulses = Number(1, 8, 1);
+    private readonly NumericUpDown _incidentOtherGap = Number(0, 1000, 0, 5);
+    private readonly NumericUpDown _incidentOffTrackFreq = Number(0, 25, 11);
+    private readonly NumericUpDown _incidentOffTrackDuration = Number(10, 1000, 105, 5);
+    private readonly NumericUpDown _incidentOffTrackPulses = Number(1, 8, 1);
+    private readonly NumericUpDown _incidentOffTrackGap = Number(0, 1000, 0, 5);
+    private readonly NumericUpDown _incidentLossFreq = Number(0, 25, 15);
+    private readonly NumericUpDown _incidentLossDuration = Number(10, 1000, 110, 5);
+    private readonly NumericUpDown _incidentLossPulses = Number(1, 8, 2);
+    private readonly NumericUpDown _incidentLossGap = Number(0, 1000, 70, 5);
+    private readonly NumericUpDown _incidentContactFreq = Number(0, 25, 20);
+    private readonly NumericUpDown _incidentContactDuration = Number(10, 1000, 155, 5);
+    private readonly NumericUpDown _incidentContactPulses = Number(1, 8, 1);
+    private readonly NumericUpDown _incidentContactGap = Number(0, 1000, 0, 5);
+    private readonly NumericUpDown _incidentRolloverFreq = Number(0, 25, 22);
+    private readonly NumericUpDown _incidentRolloverDuration = Number(10, 1000, 125, 5);
+    private readonly NumericUpDown _incidentRolloverPulses = Number(1, 8, 2);
+    private readonly NumericUpDown _incidentRolloverGap = Number(0, 1000, 65, 5);
+    private readonly NumericUpDown _incidentUnknownFreq = Number(0, 25, 13);
+    private readonly NumericUpDown _incidentUnknownDuration = Number(10, 1000, 120, 5);
+    private readonly NumericUpDown _incidentUnknownPulses = Number(1, 8, 1);
+    private readonly NumericUpDown _incidentUnknownGap = Number(0, 1000, 0, 5);
     private readonly NumericUpDown _verticalSensitivity = Number(0.2m, 3, 1, 0.05m, 2);
     private readonly NumericUpDown _kerbThreshold = Number(0.2m, 30, 2.05m, 0.05m, 2);
     private readonly NumericUpDown _landingThreshold = Number(0.2m, 30, 2.25m, 0.05m, 2);
@@ -57,13 +111,31 @@ public sealed class MainForm : Form
     private readonly ComboBox _scenarioCombo = new();
     private readonly CheckBox _telemetrySimulatorCheck = Check("Use simulated telemetry");
     private readonly Label _recordingPath = new();
+    private readonly CheckBox _autoProfileSelection = Check(
+        "Automatically select profiles using iRacing car and track identity");
+    private readonly Label _detectedCar = StatusLabel("Waiting for iRacing");
+    private readonly Label _detectedTrack = StatusLabel("Waiting for iRacing");
+    private readonly Label _profileSelectionStatus = StatusLabel(
+        "Automatic profile selection is off.");
+    private readonly ComboBox _ruleProfileCombo = new();
+    private readonly TextBox _ruleName = new();
+    private readonly TextBox _ruleCarPath = new();
+    private readonly TextBox _ruleCarName = new();
+    private readonly TextBox _ruleCarClass = new();
+    private readonly TextBox _ruleTrackName = new();
+    private readonly TextBox _ruleTrackConfig = new();
+    private readonly NumericUpDown _rulePriority = Number(-1000, 1000, 0);
+    private readonly CheckBox _ruleEnabled = Check("Rule enabled");
+    private readonly DataGridView _rulesGrid = new();
+    private string? _editingRuleId;
+    private bool _loadingSettings;
     private bool _allowClose;
     private bool _started;
 
     public MainForm(AppCoordinator coordinator)
     {
         _coordinator = coordinator;
-        Text = "PSVR2 iRacing Haptics";
+        Text = "PSVR2 iRacing Haptics 1.0";
         MinimumSize = new Size(950, 700);
         Size = new Size(1160, 820);
         StartPosition = FormStartPosition.CenterScreen;
@@ -97,8 +169,10 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(Tab("Status", BuildStateTab()));
         tabs.TabPages.Add(Tab("Effects", BuildEffectsTab()));
         tabs.TabPages.Add(Tab("Manual test", BuildManualTab()));
+        tabs.TabPages.Add(Tab("Profiles", BuildProfilesTab()));
         tabs.TabPages.Add(Tab("Collision tuning", BuildImpactTab()));
         tabs.TabPages.Add(Tab("Vertical tuning", BuildVerticalTab()));
+        tabs.TabPages.Add(Tab("Incident tuning", BuildIncidentTab()));
         tabs.TabPages.Add(Tab("Diagnostics", BuildDiagnosticsTab()));
         tabs.TabPages.Add(Tab("Calibration & simulator", BuildCalibrationTab()));
         tabs.TabPages.Add(Tab("Logs", BuildLogsTab()));
@@ -157,6 +231,8 @@ public sealed class MainForm : Form
             ("iracing", "iRacing connected"),
             ("incar", "Driver in car"),
             ("haptics", "Haptics enabled"),
+            ("profile", "Active profile"),
+            ("autoprofile", "Automatic profile selection"),
             ("rumble", "Rumble device"),
             ("telemetry", "Telemetry source")
         })
@@ -208,6 +284,12 @@ public sealed class MainForm : Form
             _landingsEnabled,
             _wheelDropsEnabled,
             _compressionEnabled));
+        AddRow(grid, "Incident notifications", _incidentEnabled);
+        AddRow(grid, "Incident point values", InlineChecks(
+            _incident1xEnabled,
+            _incident2xEnabled,
+            _incident4xEnabled,
+            _incidentOtherEnabled));
 
         panel.Controls.Add(SaveButton());
         panel.Controls.Add(grid);
@@ -215,7 +297,8 @@ public sealed class MainForm : Form
             "Turn off any event category you do not want to feel. Detection and "
             + "diagnostic logging continue while an effect is disabled, so you can "
             + "calibrate safely without sending rumble. Light kerbs also use a lower "
-            + "detection threshold and remain off by default."));
+            + "detection threshold and remain off by default. Incident notifications "
+            + "are off by default because they may duplicate a physical collision effect."));
         panel.Controls.Add(SectionTitle("Choose which events produce rumble"));
         return panel;
     }
@@ -275,6 +358,213 @@ public sealed class MainForm : Form
         return panel;
     }
 
+    private Control BuildProfilesTab()
+    {
+        var panel = ContentPanel();
+
+        var summary = SettingsGrid();
+        AddRow(summary, "Detected car", _detectedCar);
+        AddRow(summary, "Detected track", _detectedTrack);
+        AddRow(summary, "Selection result", _profileSelectionStatus);
+
+        var profileButtons = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = true
+        };
+        var apply = Button("Apply selected profile", Color.FromArgb(38, 92, 154));
+        apply.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (SelectedProfile(_profileCombo) is { } profile)
+            {
+                await _coordinator.ApplyProfileAsync(profile.Id);
+                LoadSettings(_coordinator.Settings);
+            }
+        });
+        var create = Button("New from current");
+        create.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            var name = PromptForText(
+                "Create profile",
+                "Profile name:",
+                "My profile");
+            if (name is null)
+            {
+                return;
+            }
+            await _coordinator.CreateProfileAsync(name);
+            LoadSettings(_coordinator.Settings);
+        });
+        var duplicate = Button("Duplicate");
+        duplicate.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (SelectedProfile(_profileCombo) is not { } profile)
+            {
+                return;
+            }
+            var name = PromptForText(
+                "Duplicate profile",
+                "Name for the copy:",
+                profile.Name + " copy");
+            if (name is null)
+            {
+                return;
+            }
+            await _coordinator.DuplicateProfileAsync(profile.Id, name);
+            LoadSettings(_coordinator.Settings);
+        });
+        var rename = Button("Rename");
+        rename.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (SelectedProfile(_profileCombo) is not { } profile)
+            {
+                return;
+            }
+            var name = PromptForText("Rename profile", "New name:", profile.Name);
+            if (name is null)
+            {
+                return;
+            }
+            await _coordinator.RenameProfileAsync(profile.Id, name);
+            LoadSettings(_coordinator.Settings);
+        });
+        var delete = Button("Delete");
+        delete.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (SelectedProfile(_profileCombo) is not { } profile)
+            {
+                return;
+            }
+            if (MessageBox.Show(
+                    $"Delete profile '{profile.Name}' and all rules assigned to it?",
+                    Text,
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+            await _coordinator.DeleteProfileAsync(profile.Id);
+            LoadSettings(_coordinator.Settings);
+        });
+        var reset = Button("Reset factory profile");
+        reset.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (SelectedProfile(_profileCombo) is not { } profile)
+            {
+                return;
+            }
+            if (MessageBox.Show(
+                    $"Restore all detector, effect and incident values in "
+                    + $"'{profile.Name}' to their factory defaults?",
+                    Text,
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                return;
+            }
+            await _coordinator.ResetFactoryProfileAsync(profile.Id);
+            LoadSettings(_coordinator.Settings);
+        });
+        profileButtons.Controls.AddRange(
+            [apply, create, duplicate, rename, delete, reset]);
+
+        var automatic = SettingsGrid();
+        AddRow(automatic, "Automatic selection", _autoProfileSelection);
+        var saveAutomatic = Button("Save automatic-selection setting");
+        saveAutomatic.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            await _coordinator.SetAutomaticProfileSelectionAsync(
+                _autoProfileSelection.Checked);
+            LoadSettings(_coordinator.Settings);
+        });
+        AddRow(automatic, "Apply", saveAutomatic);
+
+        ConfigureRulesGrid();
+        var editor = SettingsGrid();
+        _ruleProfileCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        AddRow(editor, "Rule name", _ruleName);
+        AddRow(editor, "Profile to activate", _ruleProfileCombo);
+        AddRow(editor, "Enabled", _ruleEnabled);
+        AddRow(editor, "Priority", _rulePriority);
+        AddRow(editor, "Car path pattern", _ruleCarPath);
+        AddRow(editor, "Car display-name pattern", _ruleCarName);
+        AddRow(editor, "Car class pattern", _ruleCarClass);
+        AddRow(editor, "Track name pattern", _ruleTrackName);
+        AddRow(editor, "Track configuration pattern", _ruleTrackConfig);
+
+        var ruleButtons = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = true
+        };
+        var capture = Button("Use detected car and track");
+        capture.Click += (_, _) =>
+        {
+            var context = _coordinator.State.TelemetryContext;
+            _ruleCarPath.Text = context.CarPath;
+            _ruleCarName.Text = string.Empty;
+            _ruleCarClass.Text = string.Empty;
+            _ruleTrackName.Text = context.TrackName;
+            _ruleTrackConfig.Text = context.TrackConfigName;
+            if (string.IsNullOrWhiteSpace(_ruleName.Text))
+            {
+                _ruleName.Text = $"{context.CarDisplayName} — {context.TrackDisplayLabel}";
+            }
+        };
+        var saveRule = Button("Add or update rule", Color.FromArgb(38, 92, 154));
+        saveRule.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            await _coordinator.UpsertProfileRuleAsync(ReadRuleEditor());
+            _editingRuleId = null;
+            ClearRuleEditor();
+            LoadSettings(_coordinator.Settings);
+        });
+        var newRule = Button("Clear editor");
+        newRule.Click += (_, _) =>
+        {
+            _editingRuleId = null;
+            ClearRuleEditor();
+        };
+        var deleteRule = Button("Delete selected rule");
+        deleteRule.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (_editingRuleId is null)
+            {
+                return;
+            }
+            await _coordinator.DeleteProfileRuleAsync(_editingRuleId);
+            _editingRuleId = null;
+            ClearRuleEditor();
+            LoadSettings(_coordinator.Settings);
+        });
+        ruleButtons.Controls.AddRange([capture, saveRule, newRule, deleteRule]);
+
+        panel.Controls.Add(ruleButtons);
+        panel.Controls.Add(editor);
+        panel.Controls.Add(Info(
+            "Every populated field is an AND condition. Leave a field blank to match "
+            + "any value. '*' matches any sequence and '?' matches one character. "
+            + "Higher priority wins; ties prefer the more specific rule. CarPath and "
+            + "TrackName are the most stable identifiers."));
+        panel.Controls.Add(_rulesGrid);
+        panel.Controls.Add(SectionTitle("Car and track assignment rules"));
+        panel.Controls.Add(automatic);
+        panel.Controls.Add(Info(
+            "Automatic selection is optional. The app reads the slowly changing "
+            + "SessionInfo YAML block exposed by the iRacing SDK; it does not use "
+            + "screen recognition or filenames."));
+        panel.Controls.Add(SectionTitle("Automatic selection"));
+        panel.Controls.Add(profileButtons);
+        panel.Controls.Add(Info(
+            "Detector thresholds, enabled event categories, incident settings and "
+            + "rumble patterns are stored per profile. Device choice, the emergency "
+            + "switch and safety limits remain global. Factory profiles can be edited "
+            + "and reset, but not renamed or deleted."));
+        panel.Controls.Add(summary);
+        panel.Controls.Add(SectionTitle("Profile management"));
+        return panel;
+    }
+
     private Control BuildImpactTab()
     {
         var panel = ContentPanel();
@@ -327,6 +617,131 @@ public sealed class MainForm : Form
         return panel;
     }
 
+    private Control BuildIncidentTab()
+    {
+        var panel = ContentPanel();
+        var policy = SettingsGrid();
+        _incidentPatternBasis.DropDownStyle = ComboBoxStyle.DropDownList;
+        _incidentPatternBasis.Items.AddRange(
+        [
+            "Incident point value (1x / 2x / 4x / other)",
+            "Inferred incident type (off track / loss of control / contact / rollover)"
+        ]);
+        AddRow(policy, "Master incident switch", _incidentEnabled);
+        AddRow(policy, "Choose rumble pattern by", _incidentPatternBasis);
+        AddRow(policy, "Point changes", InlineChecks(
+            _incident1xEnabled,
+            _incident2xEnabled,
+            _incident4xEnabled,
+            _incidentOtherEnabled));
+        AddRow(policy, "Inferred incident types", InlineChecks(
+            _incidentOffTrackEnabled,
+            _incidentLossOfControlEnabled,
+            _incidentContactEnabled,
+            _incidentRolloverEnabled,
+            _incidentUnknownEnabled));
+        AddRow(policy, "Duplicate protection", _incidentSuppressPhysical);
+        AddRow(policy, "Incident cooldown (ms)", _incidentCooldown);
+        AddRow(policy, "Evidence window (ms)", _incidentEvidenceWindow);
+
+        var patterns = SettingsGrid();
+        AddIncidentPatternRows(
+            patterns,
+            "1x",
+            _incident1xFreq,
+            _incident1xDuration,
+            _incident1xPulses,
+            _incident1xGap);
+        AddIncidentPatternRows(
+            patterns,
+            "2x",
+            _incident2xFreq,
+            _incident2xDuration,
+            _incident2xPulses,
+            _incident2xGap);
+        AddIncidentPatternRows(
+            patterns,
+            "4x",
+            _incident4xFreq,
+            _incident4xDuration,
+            _incident4xPulses,
+            _incident4xGap);
+        AddRow(patterns, "4x tail frequency (Hz)", _incident4xTailFreq);
+        AddRow(patterns, "4x tail duration (ms; 0 disables)", _incident4xTailDuration);
+        AddIncidentPatternRows(
+            patterns,
+            "Other",
+            _incidentOtherFreq,
+            _incidentOtherDuration,
+            _incidentOtherPulses,
+            _incidentOtherGap);
+
+        var typePatterns = SettingsGrid();
+        AddIncidentPatternRows(
+            typePatterns,
+            "Off track",
+            _incidentOffTrackFreq,
+            _incidentOffTrackDuration,
+            _incidentOffTrackPulses,
+            _incidentOffTrackGap);
+        AddIncidentPatternRows(
+            typePatterns,
+            "Loss of control",
+            _incidentLossFreq,
+            _incidentLossDuration,
+            _incidentLossPulses,
+            _incidentLossGap);
+        AddIncidentPatternRows(
+            typePatterns,
+            "Contact",
+            _incidentContactFreq,
+            _incidentContactDuration,
+            _incidentContactPulses,
+            _incidentContactGap);
+        AddIncidentPatternRows(
+            typePatterns,
+            "Rollover",
+            _incidentRolloverFreq,
+            _incidentRolloverDuration,
+            _incidentRolloverPulses,
+            _incidentRolloverGap);
+        AddIncidentPatternRows(
+            typePatterns,
+            "Unknown",
+            _incidentUnknownFreq,
+            _incidentUnknownDuration,
+            _incidentUnknownPulses,
+            _incidentUnknownGap);
+
+        panel.Controls.Add(SaveButton());
+        panel.Controls.Add(typePatterns);
+        panel.Controls.Add(Info(
+            "Type-based patterns use the best-effort classification. They are useful "
+            + "when you want off-track and contact notifications to feel different, "
+            + "but they cannot be treated as official incident labels."));
+        panel.Controls.Add(SectionTitle("Rumble pattern by inferred type"));
+        panel.Controls.Add(patterns);
+        panel.Controls.Add(SectionTitle("Rumble pattern by incident points"));
+        panel.Controls.Add(policy);
+        panel.Controls.Add(Info(
+            "iRacing exposes PlayerCarMyIncidentCount as a cumulative integer. "
+            + "The app can therefore identify the point increase (normally 1x, 2x "
+            + "or 4x) exactly. The SDK does not expose the stewarding cause directly. "
+            + "Off track, loss of control, contact and rollover are best-effort "
+            + "classifications from track location, acceleration, rotation and nearby "
+            + "physical detections. Unknown remains available so no counter change is "
+            + "silently discarded. Both the point-value switch and the inferred-type "
+            + "switch must be enabled for an incident to produce output; the pattern-basis "
+            + "choice only decides which waveform is used."));
+        panel.Controls.Add(Info(
+            "Incident haptics are disabled by default. With duplicate protection on, "
+            + "a contact/rollover counter change is logged but does not add a second "
+            + "notification when the physical-impact detector already produced rumble. "
+            + "Turn that protection off only if you deliberately want both sensations."));
+        panel.Controls.Add(SectionTitle("Incident detection policy"));
+        return panel;
+    }
+
     private Control BuildDiagnosticsTab()
     {
         var panel = ContentPanel();
@@ -341,6 +756,10 @@ public sealed class MainForm : Form
             ("vertjerk", "Vertical jerk"),
             ("impact", "Collision score"),
             ("verticalscore", "Vertical score"),
+            ("incidentcount", "Incident counter / latest change"),
+            ("incident", "Latest incident classification"),
+            ("context", "Detected car and track"),
+            ("profile", "Active profile"),
             ("event", "Detected event"),
             ("reason", "Classification reason"),
             ("rumble", "Last rumble command")
@@ -416,7 +835,13 @@ public sealed class MainForm : Form
         {
             ("Mark impact", "Impact"),
             ("Mark strong kerb", "Strong kerb"),
-            ("Mark landing", "Landing")
+            ("Mark landing", "Landing"),
+            ("Mark wheel drop", "Wheel drop"),
+            ("Mark compression", "Severe compression"),
+            ("Mark 1x", "1x incident"),
+            ("Mark 2x", "2x incident"),
+            ("Mark 4x", "4x incident"),
+            ("Mark false positive", "False positive")
         })
         {
             var button = Button(buttonText);
@@ -444,10 +869,11 @@ public sealed class MainForm : Form
 
         panel.Controls.Add(recorder);
         panel.Controls.Add(Info(
-            "Matched means the current detector found the expected event within 500 ms "
-            + "of your marker. Missed means the corresponding threshold may be too high. "
-            + "Unmarked detections usually indicate false positives or an event that was "
-            + "not marked."));
+            "Markers are intentionally matched from 2,000 ms before the click through "
+            + "250 ms after it, which accommodates normal human reaction time. Matched "
+            + "means the expected event was found. Missed means it was not. Mark false "
+            + "positive immediately after an unwanted detection so the advisor can "
+            + "recommend a higher threshold."));
         panel.Controls.Add(SectionTitle("Recording, markers and replay"));
         panel.Controls.Add(simulation);
         panel.Controls.Add(Info(
@@ -464,15 +890,19 @@ public sealed class MainForm : Form
             + "two or three clean laps using normal braking and ordinary kerbs. The app "
             + "should remain quiet.\n"
             + "4. Start a JSONL recording. Reproduce one clear event at a time and click "
-            + "its marker immediately after it happens. Stop the recording when done.\n"
-            + "5. Click Compare markers. For a missed collision, lower only the matching "
-            + "collision threshold by 0.10–0.20. For a missed kerb or landing, lower the "
-            + "matching vertical threshold by 0.10–0.20. If normal driving triggers an "
-            + "event, raise that threshold by the same amount.\n"
-            + "6. Change one value at a time, save, and replay the same JSONL. Use the "
-            + "Collision score and Vertical score on Diagnostics as a guide.\n"
-            + "7. Once detection is reliable, tune frequency and duration for comfort. "
-            + "Cooldown only controls how soon the same family of events can repeat."));
+            + "its marker within about two seconds. Use Mark false positive after any "
+            + "unwanted detection. Stop the recording when done.\n"
+            + "5. Click Compare markers. The advisor shows the matched event, timing and "
+            + "peak relevant score. For controlled misses it proposes a threshold 8% "
+            + "below the observed peak; for false positives it proposes an 8% margin "
+            + "above the detected score.\n"
+            + "6. Review every recommendation before applying it. Conflicting evidence "
+            + "is never auto-applied. Replay the same JSONL after each change so the "
+            + "comparison uses identical telemetry.\n"
+            + "7. Collect several examples per car/track, then save them in a dedicated "
+            + "profile and optionally add an automatic assignment rule.\n"
+            + "8. Once detection is reliable, tune frequency and duration for comfort. "
+            + "Cooldown only controls how soon the same event family can repeat."));
         panel.Controls.Add(Info(
             "Detection controls: sensitivity and thresholds decide when an event exists. "
             + "Feel controls: frequency, duration, pulse count and pulse gap decide how "
@@ -505,13 +935,12 @@ public sealed class MainForm : Form
             Padding = new Padding(0, 8, 0, 0)
         };
         _profileCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-        _profileCombo.Items.AddRange(ProfileCatalog.Names.Cast<object>().ToArray());
         var applyProfile = Button("Apply profile");
         applyProfile.Click += async (_, _) => await SafeUiAction(async () =>
         {
-            if (_profileCombo.SelectedItem is string profile)
+            if (SelectedProfile(_profileCombo) is { } profile)
             {
-                await _coordinator.ApplyProfileAsync(profile);
+                await _coordinator.ApplyProfileAsync(profile.Id);
                 LoadSettings(_coordinator.Settings);
             }
         });
@@ -595,8 +1024,27 @@ public sealed class MainForm : Form
             "haptics",
             state.HapticsEnabled,
             state.HapticsEnabled ? "Enabled" : "Disabled");
+        SetState("profile", true, state.ActiveProfileName);
+        SetState(
+            "autoprofile",
+            state.AutoProfileSelectionEnabled,
+            state.ProfileSelectionStatus);
         _stateValues["rumble"].Text = state.RumbleDeviceStatus;
         _stateValues["telemetry"].Text = state.TelemetryStatus;
+        _detectedCar.Text = state.TelemetryContext.CarDisplayName
+            + (string.IsNullOrWhiteSpace(state.TelemetryContext.CarPath)
+                ? ""
+                : $" ({state.TelemetryContext.CarPath})");
+        _detectedTrack.Text = state.TelemetryContext.TrackDisplayLabel
+            + (string.IsNullOrWhiteSpace(state.TelemetryContext.TrackName)
+                ? ""
+                : $" ({state.TelemetryContext.TrackName})");
+        _profileSelectionStatus.Text = state.ProfileSelectionStatus;
+        if (!_loadingSettings
+            && SelectedProfile(_profileCombo)?.Id != state.ActiveProfileId)
+        {
+            LoadSettings(_coordinator.Settings);
+        }
 
         var diagnostics = state.Diagnostics;
         if (diagnostics is not null)
@@ -614,7 +1062,18 @@ public sealed class MainForm : Form
             _diagnosticValues["vertjerk"].Text = $"{diagnostics.VertJerk:F1} m/s³";
             _diagnosticValues["impact"].Text = $"{diagnostics.ImpactScore:F2}";
             _diagnosticValues["verticalscore"].Text = $"{diagnostics.VerticalScore:F2}";
+            _diagnosticValues["incidentcount"].Text =
+                $"{diagnostics.Frame.IncidentCount?.ToString() ?? "unavailable"}"
+                + (diagnostics.IncidentPointDelta > 0
+                    ? $" (+{diagnostics.IncidentPointDelta}x)"
+                    : "");
+            _diagnosticValues["context"].Text =
+                $"{diagnostics.Frame.Context.CarDisplayName} / "
+                + diagnostics.Frame.Context.TrackDisplayLabel;
         }
+        _diagnosticValues["incident"].Text = state.LastIncident;
+        _diagnosticValues["profile"].Text =
+            $"{state.ActiveProfileName} — {state.ProfileSelectionStatus}";
         _diagnosticValues["event"].Text = state.LastEvent;
         if (state.Rumble is not null)
         {
@@ -624,58 +1083,138 @@ public sealed class MainForm : Form
 
     private void LoadSettings(AppSettings settings)
     {
-        _profileCombo.SelectedItem = settings.ActiveProfile;
-        if (_profileCombo.SelectedIndex < 0)
+        _loadingSettings = true;
+        try
         {
-            _profileCombo.SelectedItem = "Custom";
+            RefreshProfileControls(settings);
+            _autoProfileSelection.Checked = settings.AutoProfileSelectionEnabled;
+            _rumbleModeCombo.SelectedIndex = settings.UseSimulatedRumbleDevice ? 1 : 0;
+            _hapticsEnabled.Checked = settings.HapticsEnabled;
+            _impactEnabled.Checked = settings.Impacts.Enabled;
+            _lightImpactsEnabled.Checked = settings.Impacts.LightEnabled;
+            _mediumImpactsEnabled.Checked = settings.Impacts.MediumEnabled;
+            _strongImpactsEnabled.Checked = settings.Impacts.StrongEnabled;
+            _rolloverImpactsEnabled.Checked = settings.Impacts.RolloverEnabled;
+            Set(_impactSensitivity, settings.Impacts.Sensitivity);
+            Set(_impactLight, settings.Impacts.LightThreshold);
+            Set(_impactMedium, settings.Impacts.MediumThreshold);
+            Set(_impactStrong, settings.Impacts.StrongThreshold);
+            Set(_impactCooldown, settings.Impacts.CooldownMs);
+            Set(_impactMinSpeed, settings.Impacts.MinimumSpeedMps);
+            Set(_lightFreq, settings.Effects.LightImpact.FrequencyHz);
+            Set(_lightDuration, settings.Effects.LightImpact.DurationMs);
+            Set(_mediumFreq, settings.Effects.MediumImpact.FrequencyHz);
+            Set(_mediumDuration, settings.Effects.MediumImpact.DurationMs);
+            Set(_strongFreq, settings.Effects.StrongImpact.FrequencyHz);
+            Set(_strongDuration, settings.Effects.StrongImpact.DurationMs);
+            _strongKerbsEnabled.Checked = settings.Vertical.StrongKerbsEnabled;
+            _lightKerbsEnabled.Checked = settings.Vertical.LightKerbsEnabled;
+            _landingsEnabled.Checked = settings.Vertical.LandingsEnabled;
+            _wheelDropsEnabled.Checked = settings.Vertical.WheelDropsEnabled;
+            _compressionEnabled.Checked = settings.Vertical.SevereCompressionEnabled;
+            Set(_verticalSensitivity, settings.Vertical.Sensitivity);
+            Set(_kerbThreshold, settings.Vertical.StrongKerbThreshold);
+            Set(_landingThreshold, settings.Vertical.LandingThreshold);
+            Set(_compressionThreshold, settings.Vertical.SevereCompressionThreshold);
+            Set(_verticalCooldown, settings.Vertical.CooldownMs);
+            Set(_kerbFreq, settings.Effects.StrongKerb.FrequencyHz);
+            Set(_kerbDuration, settings.Effects.StrongKerb.DurationMs);
+            Set(_landingFreq, settings.Effects.Landing.FrequencyHz);
+            Set(_landingDuration, settings.Effects.Landing.DurationMs);
+            _landingDoublePulse.Checked = settings.Effects.Landing.TailDurationMs > 0;
+            Set(_landingGap, settings.Effects.Landing.GapMs);
+            Set(_landingTailFrequency, settings.Effects.Landing.TailFrequencyHz);
+            Set(
+                _landingTailDuration,
+                settings.Effects.Landing.TailDurationMs > 0
+                    ? settings.Effects.Landing.TailDurationMs
+                    : 110);
+
+            _incidentEnabled.Checked = settings.Incidents.Enabled;
+            _incidentPatternBasis.SelectedIndex =
+                settings.Incidents.PatternBasis == IncidentPatternBasis.InferredType
+                    ? 1
+                    : 0;
+            _incident1xEnabled.Checked = settings.Incidents.OnePointEnabled;
+            _incident2xEnabled.Checked = settings.Incidents.TwoPointEnabled;
+            _incident4xEnabled.Checked = settings.Incidents.FourPointEnabled;
+            _incidentOtherEnabled.Checked = settings.Incidents.OtherPointValuesEnabled;
+            _incidentOffTrackEnabled.Checked = settings.Incidents.OffTrackEnabled;
+            _incidentLossOfControlEnabled.Checked =
+                settings.Incidents.LossOfControlEnabled;
+            _incidentContactEnabled.Checked = settings.Incidents.ContactEnabled;
+            _incidentRolloverEnabled.Checked = settings.Incidents.RolloverEnabled;
+            _incidentUnknownEnabled.Checked = settings.Incidents.UnknownEnabled;
+            _incidentSuppressPhysical.Checked =
+                settings.Incidents.SuppressWhenPhysicalImpactDetected;
+            Set(_incidentCooldown, settings.Incidents.CooldownMs);
+            Set(_incidentEvidenceWindow, settings.Incidents.EvidenceWindowMs);
+            LoadIncidentPattern(
+                settings.Effects.Incident1x,
+                _incident1xFreq,
+                _incident1xDuration,
+                _incident1xPulses,
+                _incident1xGap);
+            LoadIncidentPattern(
+                settings.Effects.Incident2x,
+                _incident2xFreq,
+                _incident2xDuration,
+                _incident2xPulses,
+                _incident2xGap);
+            LoadIncidentPattern(
+                settings.Effects.Incident4x,
+                _incident4xFreq,
+                _incident4xDuration,
+                _incident4xPulses,
+                _incident4xGap);
+            Set(_incident4xTailFreq, settings.Effects.Incident4x.TailFrequencyHz);
+            Set(_incident4xTailDuration, settings.Effects.Incident4x.TailDurationMs);
+            LoadIncidentPattern(
+                settings.Effects.IncidentOther,
+                _incidentOtherFreq,
+                _incidentOtherDuration,
+                _incidentOtherPulses,
+                _incidentOtherGap);
+            LoadIncidentPattern(
+                settings.Effects.IncidentOffTrack,
+                _incidentOffTrackFreq,
+                _incidentOffTrackDuration,
+                _incidentOffTrackPulses,
+                _incidentOffTrackGap);
+            LoadIncidentPattern(
+                settings.Effects.IncidentLossOfControl,
+                _incidentLossFreq,
+                _incidentLossDuration,
+                _incidentLossPulses,
+                _incidentLossGap);
+            LoadIncidentPattern(
+                settings.Effects.IncidentContact,
+                _incidentContactFreq,
+                _incidentContactDuration,
+                _incidentContactPulses,
+                _incidentContactGap);
+            LoadIncidentPattern(
+                settings.Effects.IncidentRollover,
+                _incidentRolloverFreq,
+                _incidentRolloverDuration,
+                _incidentRolloverPulses,
+                _incidentRolloverGap);
+            LoadIncidentPattern(
+                settings.Effects.IncidentUnknown,
+                _incidentUnknownFreq,
+                _incidentUnknownDuration,
+                _incidentUnknownPulses,
+                _incidentUnknownGap);
         }
-        _rumbleModeCombo.SelectedIndex = settings.UseSimulatedRumbleDevice ? 1 : 0;
-        _hapticsEnabled.Checked = settings.HapticsEnabled;
-        _impactEnabled.Checked = settings.Impacts.Enabled;
-        _lightImpactsEnabled.Checked = settings.Impacts.LightEnabled;
-        _mediumImpactsEnabled.Checked = settings.Impacts.MediumEnabled;
-        _strongImpactsEnabled.Checked = settings.Impacts.StrongEnabled;
-        _rolloverImpactsEnabled.Checked = settings.Impacts.RolloverEnabled;
-        Set(_impactSensitivity, settings.Impacts.Sensitivity);
-        Set(_impactLight, settings.Impacts.LightThreshold);
-        Set(_impactMedium, settings.Impacts.MediumThreshold);
-        Set(_impactStrong, settings.Impacts.StrongThreshold);
-        Set(_impactCooldown, settings.Impacts.CooldownMs);
-        Set(_impactMinSpeed, settings.Impacts.MinimumSpeedMps);
-        Set(_lightFreq, settings.Effects.LightImpact.FrequencyHz);
-        Set(_lightDuration, settings.Effects.LightImpact.DurationMs);
-        Set(_mediumFreq, settings.Effects.MediumImpact.FrequencyHz);
-        Set(_mediumDuration, settings.Effects.MediumImpact.DurationMs);
-        Set(_strongFreq, settings.Effects.StrongImpact.FrequencyHz);
-        Set(_strongDuration, settings.Effects.StrongImpact.DurationMs);
-        _strongKerbsEnabled.Checked = settings.Vertical.StrongKerbsEnabled;
-        _lightKerbsEnabled.Checked = settings.Vertical.LightKerbsEnabled;
-        _landingsEnabled.Checked = settings.Vertical.LandingsEnabled;
-        _wheelDropsEnabled.Checked = settings.Vertical.WheelDropsEnabled;
-        _compressionEnabled.Checked = settings.Vertical.SevereCompressionEnabled;
-        Set(_verticalSensitivity, settings.Vertical.Sensitivity);
-        Set(_kerbThreshold, settings.Vertical.StrongKerbThreshold);
-        Set(_landingThreshold, settings.Vertical.LandingThreshold);
-        Set(_compressionThreshold, settings.Vertical.SevereCompressionThreshold);
-        Set(_verticalCooldown, settings.Vertical.CooldownMs);
-        Set(_kerbFreq, settings.Effects.StrongKerb.FrequencyHz);
-        Set(_kerbDuration, settings.Effects.StrongKerb.DurationMs);
-        Set(_landingFreq, settings.Effects.Landing.FrequencyHz);
-        Set(_landingDuration, settings.Effects.Landing.DurationMs);
-        _landingDoublePulse.Checked = settings.Effects.Landing.TailDurationMs > 0;
-        Set(_landingGap, settings.Effects.Landing.GapMs);
-        Set(_landingTailFrequency, settings.Effects.Landing.TailFrequencyHz);
-        Set(
-            _landingTailDuration,
-            settings.Effects.Landing.TailDurationMs > 0
-                ? settings.Effects.Landing.TailDurationMs
-                : 110);
+        finally
+        {
+            _loadingSettings = false;
+        }
     }
 
     private AppSettings ReadSettings()
     {
         var settings = _coordinator.Settings;
-        settings.ActiveProfile = "Custom";
         settings.HapticsEnabled = _hapticsEnabled.Checked;
         settings.UseSimulatedRumbleDevice = _rumbleModeCombo.SelectedIndex == 1;
         settings.Impacts.Enabled = _impactEnabled.Checked;
@@ -714,6 +1253,81 @@ public sealed class MainForm : Form
             _landingDoublePulse.Checked ? (byte)_landingTailFrequency.Value : (byte)0;
         settings.Effects.Landing.TailDurationMs =
             _landingDoublePulse.Checked ? (int)_landingTailDuration.Value : 0;
+        settings.Incidents.Enabled = _incidentEnabled.Checked;
+        settings.Incidents.PatternBasis = _incidentPatternBasis.SelectedIndex == 1
+            ? IncidentPatternBasis.InferredType
+            : IncidentPatternBasis.PointValue;
+        settings.Incidents.OnePointEnabled = _incident1xEnabled.Checked;
+        settings.Incidents.TwoPointEnabled = _incident2xEnabled.Checked;
+        settings.Incidents.FourPointEnabled = _incident4xEnabled.Checked;
+        settings.Incidents.OtherPointValuesEnabled = _incidentOtherEnabled.Checked;
+        settings.Incidents.OffTrackEnabled = _incidentOffTrackEnabled.Checked;
+        settings.Incidents.LossOfControlEnabled = _incidentLossOfControlEnabled.Checked;
+        settings.Incidents.ContactEnabled = _incidentContactEnabled.Checked;
+        settings.Incidents.RolloverEnabled = _incidentRolloverEnabled.Checked;
+        settings.Incidents.UnknownEnabled = _incidentUnknownEnabled.Checked;
+        settings.Incidents.SuppressWhenPhysicalImpactDetected =
+            _incidentSuppressPhysical.Checked;
+        settings.Incidents.CooldownMs = (int)_incidentCooldown.Value;
+        settings.Incidents.EvidenceWindowMs = (int)_incidentEvidenceWindow.Value;
+        ReadIncidentPattern(
+            settings.Effects.Incident1x,
+            _incident1xFreq,
+            _incident1xDuration,
+            _incident1xPulses,
+            _incident1xGap);
+        ReadIncidentPattern(
+            settings.Effects.Incident2x,
+            _incident2xFreq,
+            _incident2xDuration,
+            _incident2xPulses,
+            _incident2xGap);
+        ReadIncidentPattern(
+            settings.Effects.Incident4x,
+            _incident4xFreq,
+            _incident4xDuration,
+            _incident4xPulses,
+            _incident4xGap);
+        settings.Effects.Incident4x.TailFrequencyHz =
+            (byte)_incident4xTailFreq.Value;
+        settings.Effects.Incident4x.TailDurationMs =
+            (int)_incident4xTailDuration.Value;
+        ReadIncidentPattern(
+            settings.Effects.IncidentOther,
+            _incidentOtherFreq,
+            _incidentOtherDuration,
+            _incidentOtherPulses,
+            _incidentOtherGap);
+        ReadIncidentPattern(
+            settings.Effects.IncidentOffTrack,
+            _incidentOffTrackFreq,
+            _incidentOffTrackDuration,
+            _incidentOffTrackPulses,
+            _incidentOffTrackGap);
+        ReadIncidentPattern(
+            settings.Effects.IncidentLossOfControl,
+            _incidentLossFreq,
+            _incidentLossDuration,
+            _incidentLossPulses,
+            _incidentLossGap);
+        ReadIncidentPattern(
+            settings.Effects.IncidentContact,
+            _incidentContactFreq,
+            _incidentContactDuration,
+            _incidentContactPulses,
+            _incidentContactGap);
+        ReadIncidentPattern(
+            settings.Effects.IncidentRollover,
+            _incidentRolloverFreq,
+            _incidentRolloverDuration,
+            _incidentRolloverPulses,
+            _incidentRolloverGap);
+        ReadIncidentPattern(
+            settings.Effects.IncidentUnknown,
+            _incidentUnknownFreq,
+            _incidentUnknownDuration,
+            _incidentUnknownPulses,
+            _incidentUnknownGap);
         return settings;
     }
 
@@ -727,14 +1341,28 @@ public sealed class MainForm : Form
         await SafeUiAction(async () =>
         {
             var report = await _coordinator.AnalyzeRecordingAsync(dialog.FileName);
-            MessageBox.Show(
-                $"Markers: {report.MarkerCount}\n"
-                + $"Matched: {report.MatchedCount}\n"
-                + $"Missed: {report.MissedCount}\n"
-                + $"Unmarked detections: {report.UnmarkedDetectionCount}",
+            var details = BuildCalibrationReportText(report);
+            var applicable = report.Recommendations.Count(x => x.CanApply);
+            var result = MessageBox.Show(
+                details
+                + (applicable > 0
+                    ? "\n\nApply the safe recommendations to the active profile now?"
+                    : ""),
                 "Calibration result",
-                MessageBoxButtons.OK,
+                applicable > 0 ? MessageBoxButtons.YesNo : MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+            if (applicable > 0 && result == DialogResult.Yes)
+            {
+                await _coordinator.ApplyCalibrationRecommendationsAsync(report);
+                LoadSettings(_coordinator.Settings);
+                MessageBox.Show(
+                    $"{applicable} recommendation(s) applied to "
+                    + $"'{_coordinator.Settings.ActiveProfile}'. Replay the same file "
+                    + "and compare it again before collecting new telemetry.",
+                    "Calibration updated",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
         });
     }
 
@@ -746,6 +1374,319 @@ public sealed class MainForm : Form
             return;
         }
         await SafeUiAction(() => _coordinator.StartReplayAsync(dialog.FileName, 1.0));
+    }
+
+    private void ConfigureRulesGrid()
+    {
+        _rulesGrid.Dock = DockStyle.Top;
+        _rulesGrid.Height = 190;
+        _rulesGrid.ReadOnly = true;
+        _rulesGrid.AllowUserToAddRows = false;
+        _rulesGrid.AllowUserToDeleteRows = false;
+        _rulesGrid.AllowUserToResizeRows = false;
+        _rulesGrid.MultiSelect = false;
+        _rulesGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        _rulesGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        _rulesGrid.RowHeadersVisible = false;
+        _rulesGrid.BackgroundColor = Color.White;
+        _rulesGrid.Columns.Add("ruleName", "Rule");
+        _rulesGrid.Columns.Add("ruleProfile", "Profile");
+        _rulesGrid.Columns.Add("rulePriority", "Priority");
+        _rulesGrid.Columns.Add("ruleEnabled", "Enabled");
+        _rulesGrid.Columns.Add("ruleCriteria", "Matching criteria");
+        _rulesGrid.Columns["ruleName"]!.FillWeight = 20;
+        _rulesGrid.Columns["ruleProfile"]!.FillWeight = 14;
+        _rulesGrid.Columns["rulePriority"]!.FillWeight = 8;
+        _rulesGrid.Columns["ruleEnabled"]!.FillWeight = 8;
+        _rulesGrid.Columns["ruleCriteria"]!.FillWeight = 50;
+        _rulesGrid.SelectionChanged += (_, _) =>
+        {
+            if (_loadingSettings || _rulesGrid.SelectedRows.Count == 0)
+            {
+                return;
+            }
+            var ruleId = _rulesGrid.SelectedRows[0].Tag as string;
+            var rule = _coordinator.Settings.ProfileRules.FirstOrDefault(candidate =>
+                candidate.Id.Equals(ruleId, StringComparison.OrdinalIgnoreCase));
+            if (rule is not null)
+            {
+                LoadRuleEditor(rule);
+            }
+        };
+    }
+
+    private void RefreshProfileControls(AppSettings settings)
+    {
+        var profileItems = settings.Profiles
+            .OrderByDescending(profile => profile.IsBuiltIn)
+            .ThenBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(profile => new ProfileListItem(
+                profile.Id,
+                profile.Name,
+                profile.IsBuiltIn))
+            .ToArray();
+
+        RefreshProfileCombo(_profileCombo, profileItems, settings.ActiveProfileId);
+        RefreshProfileCombo(_ruleProfileCombo, profileItems, settings.ActiveProfileId);
+
+        _rulesGrid.Rows.Clear();
+        foreach (var rule in settings.ProfileRules
+                     .OrderByDescending(rule => rule.Priority)
+                     .ThenBy(rule => rule.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var profileName = ProfileCatalog.FindProfile(settings, rule.ProfileId)?.Name
+                ?? "(missing profile)";
+            var index = _rulesGrid.Rows.Add(
+                rule.Name,
+                profileName,
+                rule.Priority,
+                rule.Enabled ? "Yes" : "No",
+                RuleCriteria(rule));
+            _rulesGrid.Rows[index].Tag = rule.Id;
+        }
+
+        if (_editingRuleId is not null)
+        {
+            var row = _rulesGrid.Rows
+                .Cast<DataGridViewRow>()
+                .FirstOrDefault(candidate =>
+                    string.Equals(
+                        candidate.Tag as string,
+                        _editingRuleId,
+                        StringComparison.OrdinalIgnoreCase));
+            if (row is not null)
+            {
+                row.Selected = true;
+            }
+        }
+    }
+
+    private static void RefreshProfileCombo(
+        ComboBox combo,
+        IReadOnlyList<ProfileListItem> profiles,
+        string selectedId)
+    {
+        combo.BeginUpdate();
+        try
+        {
+            combo.Items.Clear();
+            combo.Items.AddRange(profiles.Cast<object>().ToArray());
+            combo.SelectedItem = profiles.FirstOrDefault(profile =>
+                profile.Id.Equals(selectedId, StringComparison.OrdinalIgnoreCase));
+            if (combo.SelectedIndex < 0 && combo.Items.Count > 0)
+            {
+                combo.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            combo.EndUpdate();
+        }
+    }
+
+    private static ProfileListItem? SelectedProfile(ComboBox combo) =>
+        combo.SelectedItem as ProfileListItem;
+
+    private ProfileAssignmentRule ReadRuleEditor()
+    {
+        var profile = SelectedProfile(_ruleProfileCombo)
+            ?? throw new InvalidOperationException("Select a profile for this rule.");
+        return new ProfileAssignmentRule
+        {
+            Id = _editingRuleId ?? Guid.NewGuid().ToString("N"),
+            Name = string.IsNullOrWhiteSpace(_ruleName.Text)
+                ? "Automatic profile rule"
+                : _ruleName.Text.Trim(),
+            Enabled = _ruleEnabled.Checked,
+            Priority = (int)_rulePriority.Value,
+            ProfileId = profile.Id,
+            CarPathPattern = _ruleCarPath.Text.Trim(),
+            CarNamePattern = _ruleCarName.Text.Trim(),
+            CarClassPattern = _ruleCarClass.Text.Trim(),
+            TrackNamePattern = _ruleTrackName.Text.Trim(),
+            TrackConfigPattern = _ruleTrackConfig.Text.Trim()
+        };
+    }
+
+    private void LoadRuleEditor(ProfileAssignmentRule rule)
+    {
+        _editingRuleId = rule.Id;
+        _ruleName.Text = rule.Name;
+        _ruleEnabled.Checked = rule.Enabled;
+        Set(_rulePriority, rule.Priority);
+        _ruleCarPath.Text = rule.CarPathPattern;
+        _ruleCarName.Text = rule.CarNamePattern;
+        _ruleCarClass.Text = rule.CarClassPattern;
+        _ruleTrackName.Text = rule.TrackNamePattern;
+        _ruleTrackConfig.Text = rule.TrackConfigPattern;
+        var profile = _ruleProfileCombo.Items
+            .Cast<ProfileListItem>()
+            .FirstOrDefault(candidate =>
+                candidate.Id.Equals(rule.ProfileId, StringComparison.OrdinalIgnoreCase));
+        if (profile is not null)
+        {
+            _ruleProfileCombo.SelectedItem = profile;
+        }
+    }
+
+    private void ClearRuleEditor()
+    {
+        _ruleName.Clear();
+        _ruleEnabled.Checked = true;
+        Set(_rulePriority, 0);
+        _ruleCarPath.Clear();
+        _ruleCarName.Clear();
+        _ruleCarClass.Clear();
+        _ruleTrackName.Clear();
+        _ruleTrackConfig.Clear();
+        var activeId = _coordinator.Settings.ActiveProfileId;
+        _ruleProfileCombo.SelectedItem = _ruleProfileCombo.Items
+            .Cast<ProfileListItem>()
+            .FirstOrDefault(profile =>
+                profile.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase));
+        _rulesGrid.ClearSelection();
+    }
+
+    private static string RuleCriteria(ProfileAssignmentRule rule)
+    {
+        var parts = new List<string>();
+        Add("CarPath", rule.CarPathPattern);
+        Add("car name", rule.CarNamePattern);
+        Add("class", rule.CarClassPattern);
+        Add("track", rule.TrackNamePattern);
+        Add("config", rule.TrackConfigPattern);
+        return string.Join("; ", parts);
+
+        void Add(string label, string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                parts.Add($"{label}={value}");
+            }
+        }
+    }
+
+    private string? PromptForText(string title, string prompt, string initialValue)
+    {
+        using var dialog = new Form
+        {
+            Text = title,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(430, 135),
+            Font = Font
+        };
+        var label = new Label
+        {
+            Text = prompt,
+            AutoSize = true,
+            Location = new Point(14, 15)
+        };
+        var input = new TextBox
+        {
+            Text = initialValue,
+            Location = new Point(14, 42),
+            Width = 400
+        };
+        var ok = Button("OK", Color.FromArgb(38, 92, 154));
+        ok.DialogResult = DialogResult.OK;
+        ok.Location = new Point(245, 88);
+        var cancel = Button("Cancel");
+        cancel.DialogResult = DialogResult.Cancel;
+        cancel.Location = new Point(335, 88);
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
+        dialog.Controls.AddRange([label, input, ok, cancel]);
+        input.SelectAll();
+        return dialog.ShowDialog(this) == DialogResult.OK
+            ? input.Text.Trim()
+            : null;
+    }
+
+    private static string BuildCalibrationReportText(CalibrationReport report)
+    {
+        var text = new StringBuilder();
+        text.AppendLine($"Markers: {report.MarkerCount}");
+        text.AppendLine($"Matched: {report.MatchedCount}");
+        text.AppendLine($"Missed: {report.MissedCount}");
+        text.AppendLine($"Unmarked detections: {report.UnmarkedDetectionCount}");
+        if (report.Matches.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Marker details:");
+            foreach (var match in report.Matches.Take(12))
+            {
+                text.Append("• ").Append(match.Marker).Append(": ")
+                    .AppendLine(match.Explanation);
+            }
+            if (report.Matches.Count > 12)
+            {
+                text.AppendLine($"• …and {report.Matches.Count - 12} more marker(s).");
+            }
+        }
+        if (report.Recommendations.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Recommendations:");
+            foreach (var recommendation in report.Recommendations)
+            {
+                text.Append("• ")
+                    .Append(recommendation.SettingPath)
+                    .Append(": ");
+                if (recommendation.CanApply)
+                {
+                    text.Append(recommendation.CurrentValue.ToString("F2"))
+                        .Append(" → ")
+                        .Append(recommendation.SuggestedValue.ToString("F2"))
+                        .Append(". ");
+                }
+                text.AppendLine(recommendation.Reason);
+            }
+        }
+        return text.ToString().TrimEnd();
+    }
+
+    private static void AddIncidentPatternRows(
+        TableLayoutPanel grid,
+        string prefix,
+        NumericUpDown frequency,
+        NumericUpDown duration,
+        NumericUpDown pulses,
+        NumericUpDown gap)
+    {
+        AddRow(grid, $"{prefix} frequency (Hz)", frequency);
+        AddRow(grid, $"{prefix} pulse duration (ms)", duration);
+        AddRow(grid, $"{prefix} pulse count", pulses);
+        AddRow(grid, $"{prefix} gap between pulses (ms)", gap);
+    }
+
+    private static void LoadIncidentPattern(
+        EffectPatternSettings pattern,
+        NumericUpDown frequency,
+        NumericUpDown duration,
+        NumericUpDown pulses,
+        NumericUpDown gap)
+    {
+        Set(frequency, pattern.FrequencyHz);
+        Set(duration, pattern.DurationMs);
+        Set(pulses, pattern.PulseCount);
+        Set(gap, pattern.GapMs);
+    }
+
+    private static void ReadIncidentPattern(
+        EffectPatternSettings pattern,
+        NumericUpDown frequency,
+        NumericUpDown duration,
+        NumericUpDown pulses,
+        NumericUpDown gap)
+    {
+        pattern.FrequencyHz = (byte)frequency.Value;
+        pattern.DurationMs = (int)duration.Value;
+        pattern.PulseCount = (int)pulses.Value;
+        pattern.GapMs = (int)gap.Value;
     }
 
     private async Task SafeUiAction(Func<Task> action)
@@ -953,6 +1894,9 @@ public sealed class MainForm : Form
         TelemetryScenario.FrontImpact => "Front impact",
         TelemetryScenario.StrongCollision => "Strong collision",
         TelemetryScenario.Rollover => "Rollover",
+        TelemetryScenario.OffTrackIncident1x => "1x off-track incident",
+        TelemetryScenario.LossOfControlIncident2x => "2x loss-of-control incident",
+        TelemetryScenario.ContactIncident4x => "4x contact incident",
         TelemetryScenario.ConnectionLoss => "Connection loss",
         _ => scenario.ToString()
     };
@@ -965,5 +1909,14 @@ public sealed class MainForm : Form
             FileName = directory,
             UseShellExecute = true
         });
+    }
+
+    private sealed record ProfileListItem(
+        string Id,
+        string Name,
+        bool IsBuiltIn)
+    {
+        public override string ToString() =>
+            IsBuiltIn ? $"{Name} (factory)" : Name;
     }
 }

@@ -17,9 +17,20 @@ internal static class Program
     [
         ("Default settings without a file", SettingsDefaults),
         ("Settings persistence and validation", SettingsRoundTrip),
+        ("Settings seed the four factory profiles", SettingsSeedFactoryProfiles),
+        ("Profile CRUD preserves factory profiles", ProfileCrudWorks),
+        ("Profiles preserve independent detector settings", ProfilesPreserveIndependentSettings),
+        ("Profile rules persist with settings", ProfileRulesPersist),
         ("Version 1 settings receive balanced effects", SettingsMigratesLegacyEffects),
         ("Migration preserves custom duration", SettingsMigrationPreservesCustomDuration),
         ("Legacy Portuguese profile names are migrated", LegacyProfileNameMigrates),
+        ("Automatic rules match exact car and track identity", ProfileRuleExactMatch),
+        ("Automatic rules support case-insensitive wildcards", ProfileRuleWildcardMatch),
+        ("Automatic rules prefer priority then specificity", ProfileRuleOrdering),
+        ("Automatic rules remain optional", ProfileRuleSelectionIsOptional),
+        ("SessionInfo parser selects the player driver", SessionInfoParserSelectsPlayer),
+        ("SessionInfo parser tolerates partial YAML", SessionInfoParserToleratesPartialYaml),
+        ("iRacing SessionInfo header offsets match the SDK", SessionInfoHeaderOffsetsMatchSdk),
         ("Signal filtering and jerk calculation", SignalProcessorCalculatesJerk),
         ("Normal acceleration is not a collision", NormalAccelerationIsIgnored),
         ("Hard braking is not a collision", HardBrakingIsIgnored),
@@ -32,7 +43,15 @@ internal static class Program
         ("Landing is detected after airborne state", LandingIsDetected),
         ("Wheel drop uses suspension asymmetry", WheelDropIsDetected),
         ("Invalid telemetry resets warmup", InvalidTelemetryResetsPipeline),
+        ("1x off-track incidents are detected exactly", OffTrackIncidentIsDetected),
+        ("2x loss-of-control incidents are classified", LossOfControlIncidentIsDetected),
+        ("4x contact incidents coexist with physical impacts", ContactIncidentIsDetected),
+        ("Incident counter decreases do not create events", IncidentCounterDecreaseIsIgnored),
+        ("Incident point and type switches both gate output", IncidentSwitchesGateOutput),
+        ("Duplicate incident rumble is suppressed by default", DuplicateIncidentIsSuppressed),
         ("Effect mapping distinguishes impact and landing", EffectMappingDiffers),
+        ("Incident mapper can use exact point patterns", IncidentMapperUsesPointPattern),
+        ("Incident mapper can use inferred-type patterns", IncidentMapperUsesTypePattern),
         ("Simulated scenarios use balanced effects", SimulatedScenariosUseBalancedEffects),
         ("Default patterns respect conservative limits", DefaultEffectsRespectSafetyLimits),
         ("Per-event switches control haptic output", EventSwitchesControlOutput),
@@ -45,6 +64,8 @@ internal static class Program
         ("Unavailable device rejects an effect", UnavailableDeviceRejectsEffect),
         ("JSONL recording preserves frames and markers", RecorderWritesReplayableJsonl),
         ("Calibration matches markers to detections", CalibrationMatchesDetection),
+        ("Calibration proposes a bounded missed-event adjustment", CalibrationRecommendsForMissedEvent),
+        ("Incident markers do not alter physical thresholds", CalibrationLeavesIncidentThresholdsAlone),
         ("Missing Toolkit DLL does not crash", MissingToolkitDoesNotCrash),
         ("Missing iRacing does not crash", MissingIRacingDoesNotCrash)
     ];
@@ -123,6 +144,118 @@ internal static class Program
             False(loaded.Impacts.LightEnabled);
             Near(2.2, loaded.Impacts.LightThreshold, 0.001);
             Equal((byte)25, loaded.Effects.StrongImpact.FrequencyHz);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task SettingsSeedFactoryProfiles()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var settings = await new SettingsService(
+                Path.Combine(directory, "settings.json")).LoadAsync();
+            Equal(4, settings.Profiles.Count(profile => profile.IsBuiltIn));
+            True(settings.Profiles.Any(profile =>
+                profile.Id == ProfileCatalog.DefaultProfileId));
+            True(settings.Profiles.Any(profile =>
+                profile.Id == ProfileCatalog.GentleProfileId));
+            True(settings.Profiles.Any(profile =>
+                profile.Id == ProfileCatalog.StrongProfileId));
+            True(settings.Profiles.Any(profile =>
+                profile.Id == ProfileCatalog.CustomProfileId));
+            False(settings.Incidents.Enabled);
+            Equal(IncidentPatternBasis.PointValue, settings.Incidents.PatternBasis);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static Task ProfileCrudWorks()
+    {
+        var settings = ProfileCatalog.Create("Default");
+        var created = ProfileCatalog.AddProfile(settings, "GT sprint");
+        False(created.IsBuiltIn);
+        var duplicate = ProfileCatalog.DuplicateProfile(
+            settings,
+            created.Id,
+            "GT sprint wet");
+        ProfileCatalog.RenameProfile(settings, duplicate.Id, "GT sprint rain");
+        Equal(
+            "GT sprint rain",
+            ProfileCatalog.FindProfile(settings, duplicate.Id)!.Name);
+
+        settings.ProfileRules.Add(new ProfileAssignmentRule
+        {
+            ProfileId = duplicate.Id,
+            TrackNamePattern = "okayama"
+        });
+        ProfileCatalog.ApplyProfile(settings, duplicate.Id);
+        ProfileCatalog.DeleteProfile(settings, duplicate.Id);
+        Equal(ProfileCatalog.DefaultProfileId, settings.ActiveProfileId);
+        False(settings.ProfileRules.Any(rule => rule.ProfileId == duplicate.Id));
+        Equal(4, settings.Profiles.Count(profile => profile.IsBuiltIn));
+
+        Throws<InvalidOperationException>(() =>
+            ProfileCatalog.DeleteProfile(settings, ProfileCatalog.DefaultProfileId));
+        Throws<InvalidOperationException>(() =>
+            ProfileCatalog.RenameProfile(
+                settings,
+                ProfileCatalog.DefaultProfileId,
+                "Renamed"));
+        return Task.CompletedTask;
+    }
+
+    private static Task ProfilesPreserveIndependentSettings()
+    {
+        var settings = ProfileCatalog.Create("Default");
+        var defaultThreshold = settings.Impacts.LightThreshold;
+        var profile = ProfileCatalog.AddProfile(settings, "Formula setup");
+        ProfileCatalog.ApplyProfile(settings, profile.Id);
+        settings.Impacts.LightThreshold = 3.45;
+        settings.Incidents.Enabled = true;
+        settings.Incidents.PatternBasis = IncidentPatternBasis.InferredType;
+        ProfileCatalog.CaptureActiveProfile(settings);
+
+        ProfileCatalog.ApplyProfile(settings, ProfileCatalog.DefaultProfileId);
+        Near(defaultThreshold, settings.Impacts.LightThreshold, 0.001);
+        False(settings.Incidents.Enabled);
+
+        ProfileCatalog.ApplyProfile(settings, profile.Id);
+        Near(3.45, settings.Impacts.LightThreshold, 0.001);
+        True(settings.Incidents.Enabled);
+        Equal(IncidentPatternBasis.InferredType, settings.Incidents.PatternBasis);
+        return Task.CompletedTask;
+    }
+
+    private static async Task ProfileRulesPersist()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var service = new SettingsService(Path.Combine(directory, "settings.json"));
+            var settings = await service.LoadAsync();
+            var profile = ProfileCatalog.AddProfile(settings, "Porsche at Spa");
+            settings.ProfileRules.Add(new ProfileAssignmentRule
+            {
+                Name = "Porsche Spa",
+                ProfileId = profile.Id,
+                Priority = 50,
+                CarPathPattern = "porsche911rgt3",
+                TrackNamePattern = "spa"
+            });
+            await service.SaveAsync(settings);
+
+            var loaded = await service.LoadAsync();
+            var rule = loaded.ProfileRules.Single();
+            Equal("Porsche Spa", rule.Name);
+            Equal(50, rule.Priority);
+            True(ProfileCatalog.FindProfile(loaded, rule.ProfileId) is not null);
         }
         finally
         {
@@ -210,6 +343,174 @@ internal static class Program
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    private static Task ProfileRuleExactMatch()
+    {
+        var settings = ProfileCatalog.Create("Default");
+        var profile = ProfileCatalog.AddProfile(settings, "Porsche Spa");
+        settings.AutoProfileSelectionEnabled = true;
+        settings.ProfileRules.Add(new ProfileAssignmentRule
+        {
+            Name = "Exact assignment",
+            ProfileId = profile.Id,
+            CarPathPattern = "porsche911rgt3",
+            TrackNamePattern = "spa",
+            TrackConfigPattern = "grand prix pits"
+        });
+
+        var match = ProfileRuleMatcher.Select(settings, PlayerContext());
+        True(match is not null);
+        Equal(profile.Id, match!.Profile.Id);
+        True(match.Description.Contains("Porsche", StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    private static Task ProfileRuleWildcardMatch()
+    {
+        var settings = ProfileCatalog.Create("Default");
+        var profile = ProfileCatalog.AddProfile(settings, "GT3");
+        settings.AutoProfileSelectionEnabled = true;
+        settings.ProfileRules.Add(new ProfileAssignmentRule
+        {
+            ProfileId = profile.Id,
+            CarPathPattern = "PORSCHE*GT3",
+            TrackNamePattern = "s?a"
+        });
+
+        var match = ProfileRuleMatcher.Select(settings, PlayerContext());
+        Equal(profile.Id, match!.Profile.Id);
+        return Task.CompletedTask;
+    }
+
+    private static Task ProfileRuleOrdering()
+    {
+        var settings = ProfileCatalog.Create("Default");
+        var broad = ProfileCatalog.AddProfile(settings, "Broad");
+        var exact = ProfileCatalog.AddProfile(settings, "Exact");
+        var priority = ProfileCatalog.AddProfile(settings, "Priority");
+        settings.AutoProfileSelectionEnabled = true;
+        settings.ProfileRules.AddRange(
+        [
+            new ProfileAssignmentRule
+            {
+                Name = "Broad",
+                ProfileId = broad.Id,
+                Priority = 10,
+                CarPathPattern = "porsche*"
+            },
+            new ProfileAssignmentRule
+            {
+                Name = "Exact",
+                ProfileId = exact.Id,
+                Priority = 10,
+                CarPathPattern = "porsche911rgt3",
+                TrackNamePattern = "spa"
+            },
+            new ProfileAssignmentRule
+            {
+                Name = "Priority",
+                ProfileId = priority.Id,
+                Priority = 11,
+                TrackNamePattern = "*"
+            }
+        ]);
+
+        Equal(
+            priority.Id,
+            ProfileRuleMatcher.Select(settings, PlayerContext())!.Profile.Id);
+        settings.ProfileRules.Single(rule => rule.Name == "Priority").Enabled = false;
+        Equal(
+            exact.Id,
+            ProfileRuleMatcher.Select(settings, PlayerContext())!.Profile.Id);
+        return Task.CompletedTask;
+    }
+
+    private static Task ProfileRuleSelectionIsOptional()
+    {
+        var settings = ProfileCatalog.Create("Default");
+        var profile = ProfileCatalog.AddProfile(settings, "Optional");
+        settings.ProfileRules.Add(new ProfileAssignmentRule
+        {
+            ProfileId = profile.Id,
+            TrackNamePattern = "*"
+        });
+
+        False(settings.AutoProfileSelectionEnabled);
+        True(ProfileRuleMatcher.Select(settings, PlayerContext()) is null);
+        settings.AutoProfileSelectionEnabled = true;
+        True(ProfileRuleMatcher.Select(settings, new TelemetryContext()) is null);
+        return Task.CompletedTask;
+    }
+
+    private static Task SessionInfoParserSelectsPlayer()
+    {
+        const string yaml = """
+            WeekendInfo:
+              TrackName: spa
+              TrackID: 100
+              TrackDisplayName: "Circuit de Spa-Francorchamps"
+              TrackDisplayShortName: Spa
+              TrackConfigName: Grand Prix Pits
+            DriverInfo:
+              DriverCarIdx: 2
+              Drivers:
+              - CarIdx: 0
+                CarID: 1
+                CarPath: other_car
+              - CarIdx: 2
+                CarID: 105
+                CarClassID: 42
+                CarPath: !!str porsche911rgt3
+                CarScreenName: "Porsche 911 GT3 R"
+                CarScreenNameShort: Porsche
+                CarClassShortName: GT3
+            """;
+
+        var context = IRacingSessionInfoParser.Parse(yaml, 17);
+        Equal(17, context.SessionInfoUpdate);
+        Equal(2, context.DriverCarIdx!.Value);
+        Equal(105, context.CarId!.Value);
+        Equal(42, context.CarClassId!.Value);
+        Equal("porsche911rgt3", context.CarPath);
+        Equal("Porsche 911 GT3 R", context.CarName);
+        Equal("GT3", context.CarClass);
+        Equal(100, context.TrackId!.Value);
+        Equal("spa", context.TrackName);
+        Equal("Circuit de Spa-Francorchamps", context.TrackDisplayName);
+        Equal("Grand Prix Pits", context.TrackConfigName);
+        return Task.CompletedTask;
+    }
+
+    private static Task SessionInfoParserToleratesPartialYaml()
+    {
+        const string yaml = """
+            Unrelated:
+              Broken: [value
+            WeekendInfo:
+              TrackName: okayama
+              TrackDisplayShortName: Okayama
+            DriverInfo:
+              DriverCarIdx: 99
+              Drivers:
+              - CarIdx: 0
+                CarPath: ignored
+            """;
+        var context = IRacingSessionInfoParser.Parse(yaml);
+        Equal("okayama", context.TrackName);
+        Equal("Okayama", context.TrackDisplayName);
+        Equal(string.Empty, context.CarPath);
+        True(context.HasIdentity);
+        Equal(-1, IRacingSessionInfoParser.Parse(null).SessionInfoUpdate);
+        return Task.CompletedTask;
+    }
+
+    private static Task SessionInfoHeaderOffsetsMatchSdk()
+    {
+        Equal(12, IRacingSharedMemoryClient.SessionInfoUpdateOffset);
+        Equal(16, IRacingSharedMemoryClient.SessionInfoLengthOffset);
+        Equal(20, IRacingSharedMemoryClient.SessionInfoDataOffsetOffset);
+        return Task.CompletedTask;
     }
 
     private static Task SignalProcessorCalculatesJerk()
@@ -318,6 +619,97 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task OffTrackIncidentIsDetected()
+    {
+        var incidents = DetectCandidates(TelemetryScenario.OffTrackIncident1x)
+            .Where(IsIncident)
+            .ToArray();
+        Equal(1, incidents.Length);
+        Equal(HapticEventKind.Incident1x, incidents[0].Kind);
+        Equal(1, incidents[0].IncidentPoints);
+        Equal(IncidentType.OffTrack, incidents[0].IncidentType);
+        return Task.CompletedTask;
+    }
+
+    private static Task LossOfControlIncidentIsDetected()
+    {
+        var incident = DetectCandidates(TelemetryScenario.LossOfControlIncident2x)
+            .Single(IsIncident);
+        Equal(HapticEventKind.Incident2x, incident.Kind);
+        Equal(2, incident.IncidentPoints);
+        Equal(IncidentType.LossOfControl, incident.IncidentType);
+        return Task.CompletedTask;
+    }
+
+    private static Task ContactIncidentIsDetected()
+    {
+        var candidates = DetectCandidates(TelemetryScenario.ContactIncident4x);
+        var incident = candidates.Single(candidate =>
+            candidate.Kind == HapticEventKind.Incident4x);
+        Equal(4, incident.IncidentPoints);
+        Equal(IncidentType.Contact, incident.IncidentType);
+        True(incident.HasRelatedPhysicalEvent);
+        True(candidates.Any(IsCollision));
+        return Task.CompletedTask;
+    }
+
+    private static Task IncidentCounterDecreaseIsIgnored()
+    {
+        var pipeline = new HapticDetectionPipeline();
+        var settings = new AppSettings();
+        var start = DateTimeOffset.UtcNow;
+        for (var index = 0; index < 70; index++)
+        {
+            pipeline.Process(ValidFrame(start.AddSeconds(index / 60.0), index) with
+            {
+                IncidentCount = 4
+            }, settings);
+        }
+
+        var result = pipeline.Process(ValidFrame(start.AddSeconds(1.3), 100) with
+        {
+            IncidentCount = 2
+        }, settings);
+        False(result.Candidates.Any(IsIncident));
+        Equal(0, result.Diagnostics.IncidentPointDelta);
+        return Task.CompletedTask;
+    }
+
+    private static Task IncidentSwitchesGateOutput()
+    {
+        var settings = new AppSettings();
+        settings.Incidents.Enabled = true;
+        var incident = IncidentEvent(
+            HapticEventKind.Incident2x,
+            2,
+            IncidentType.LossOfControl);
+        True(HapticEventPolicy.IsEnabled(incident, settings));
+
+        settings.Incidents.TwoPointEnabled = false;
+        False(HapticEventPolicy.IsEnabled(incident, settings));
+        settings.Incidents.TwoPointEnabled = true;
+        settings.Incidents.LossOfControlEnabled = false;
+        False(HapticEventPolicy.IsEnabled(incident, settings));
+        settings.Incidents.LossOfControlEnabled = true;
+        True(HapticEventPolicy.IsEnabled(incident, settings));
+        return Task.CompletedTask;
+    }
+
+    private static Task DuplicateIncidentIsSuppressed()
+    {
+        var settings = new AppSettings();
+        settings.Incidents.Enabled = true;
+        var incident = IncidentEvent(
+            HapticEventKind.Incident4x,
+            4,
+            IncidentType.Contact,
+            relatedPhysicalEvent: true);
+        False(HapticEventPolicy.IsEnabled(incident, settings));
+        settings.Incidents.SuppressWhenPhysicalImpactDetected = false;
+        True(HapticEventPolicy.IsEnabled(incident, settings));
+        return Task.CompletedTask;
+    }
+
     private static Task EffectMappingDiffers()
     {
         var mapper = new RumbleEffectMapper();
@@ -343,6 +735,42 @@ internal static class Program
             diag), settings.Effects);
         True(impact.Pulses[0].FrequencyHz != landing.Pulses[0].FrequencyHz);
         True(landing.Pulses.Count == 2);
+        return Task.CompletedTask;
+    }
+
+    private static Task IncidentMapperUsesPointPattern()
+    {
+        var settings = new AppSettings();
+        settings.Incidents.PatternBasis = IncidentPatternBasis.PointValue;
+        settings.Effects.Incident2x.FrequencyHz = 17;
+        settings.Effects.IncidentOffTrack.FrequencyHz = 10;
+        var effect = new RumbleEffectMapper().Map(
+            IncidentEvent(
+                HapticEventKind.Incident2x,
+                2,
+                IncidentType.OffTrack),
+            settings.Effects,
+            settings.Incidents);
+        Equal((byte)17, effect.Pulses[0].FrequencyHz);
+        True(effect.Name.Contains("2x", StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    private static Task IncidentMapperUsesTypePattern()
+    {
+        var settings = new AppSettings();
+        settings.Incidents.PatternBasis = IncidentPatternBasis.InferredType;
+        settings.Effects.Incident4x.FrequencyHz = 24;
+        settings.Effects.IncidentOffTrack.FrequencyHz = 11;
+        var effect = new RumbleEffectMapper().Map(
+            IncidentEvent(
+                HapticEventKind.Incident4x,
+                4,
+                IncidentType.OffTrack),
+            settings.Effects,
+            settings.Incidents);
+        Equal((byte)11, effect.Pulses[0].FrequencyHz);
+        True(effect.Name.Contains("off track", StringComparison.Ordinal));
         return Task.CompletedTask;
     }
 
@@ -595,6 +1023,76 @@ internal static class Program
         }
     }
 
+    private static async Task CalibrationRecommendsForMissedEvent()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "missed-event.jsonl");
+            await using var recorder = new TelemetryRecorder();
+            await recorder.StartAsync(path);
+            foreach (var frame in TelemetryScenarioFactory.Create(
+                         TelemetryScenario.StrongCollision))
+            {
+                await recorder.RecordFrameAsync(frame);
+                if (Math.Abs(frame.LatAccelMps2) > 50)
+                {
+                    await recorder.MarkAsync("Impact");
+                }
+            }
+            await recorder.StopAsync();
+
+            var settings = new AppSettings();
+            settings.Impacts.LightThreshold = 100;
+            settings.Impacts.MediumThreshold = 101;
+            settings.Impacts.StrongThreshold = 102;
+            var report = await CalibrationAnalyzer.AnalyzeAsync(path, settings);
+            Equal(1, report.MissedCount);
+            var recommendation = report.Recommendations.Single();
+            Equal("Impacts.LightThreshold", recommendation.SettingPath);
+            True(recommendation.CanApply);
+            True(recommendation.SuggestedValue < recommendation.CurrentValue);
+            True(recommendation.SuggestedValue >= 0.2);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task CalibrationLeavesIncidentThresholdsAlone()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "incident-marker.jsonl");
+            await using var recorder = new TelemetryRecorder();
+            await recorder.StartAsync(path);
+            var previous = 0;
+            foreach (var frame in TelemetryScenarioFactory.Create(
+                         TelemetryScenario.OffTrackIncident1x))
+            {
+                await recorder.RecordFrameAsync(frame);
+                var current = frame.IncidentCount ?? previous;
+                if (current > previous)
+                {
+                    await recorder.MarkAsync("1x incident");
+                }
+                previous = current;
+            }
+            await recorder.StopAsync();
+
+            var report = await CalibrationAnalyzer.AnalyzeAsync(path, new AppSettings());
+            Equal(1, report.MarkerCount);
+            Equal(1, report.MatchedCount);
+            Equal(0, report.Recommendations.Count);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static async Task MissingToolkitDoesNotCrash()
     {
         await using var client = new Psvr2ToolkitClient(new SafetySettings());
@@ -629,6 +1127,40 @@ internal static class Program
         }
         return events;
     }
+
+    private static List<DetectedHapticEvent> DetectCandidates(
+        TelemetryScenario scenario,
+        AppSettings? settings = null)
+    {
+        var pipeline = new HapticDetectionPipeline();
+        settings ??= new AppSettings();
+        var events = new List<DetectedHapticEvent>();
+        foreach (var frame in TelemetryScenarioFactory.Create(scenario))
+        {
+            events.AddRange(pipeline.Process(frame, settings).Candidates);
+        }
+        return events;
+    }
+
+    private static DetectedHapticEvent IncidentEvent(
+        HapticEventKind kind,
+        int points,
+        IncidentType type,
+        bool relatedPhysicalEvent = false) =>
+        new(
+            DateTimeOffset.UtcNow,
+            kind,
+            points >= 4 ? EventSeverity.Strong : EventSeverity.Medium,
+            points,
+            50,
+            ImpactDirection.NotApplicable,
+            "test incident",
+            new ProcessedTelemetry())
+        {
+            IncidentPoints = points,
+            IncidentType = type,
+            HasRelatedPhysicalEvent = relatedPhysicalEvent
+        };
 
     private static RumbleController Controller(SimulatedRumbleDevice device) =>
         new(
@@ -701,11 +1233,33 @@ internal static class Program
             IncidentCount = 0
         };
 
+    private static TelemetryContext PlayerContext() =>
+        new()
+        {
+            SessionInfoUpdate = 1,
+            DriverCarIdx = 2,
+            CarId = 105,
+            CarClassId = 42,
+            CarPath = "porsche911rgt3",
+            CarName = "Porsche 911 GT3 R",
+            CarClass = "GT3",
+            TrackId = 100,
+            TrackName = "spa",
+            TrackDisplayName = "Circuit de Spa-Francorchamps",
+            TrackConfigName = "Grand Prix Pits"
+        };
+
     private static bool IsCollision(DetectedHapticEvent detected) =>
         detected.Kind is HapticEventKind.LightImpact
             or HapticEventKind.MediumImpact
             or HapticEventKind.StrongImpact
             or HapticEventKind.RolloverImpact;
+
+    private static bool IsIncident(DetectedHapticEvent detected) =>
+        detected.Kind is HapticEventKind.Incident1x
+            or HapticEventKind.Incident2x
+            or HapticEventKind.Incident4x
+            or HapticEventKind.IncidentOther;
 
     private static string Describe(IEnumerable<DetectedHapticEvent> events) =>
         "Events: " + string.Join(
@@ -746,5 +1300,20 @@ internal static class Program
             throw new InvalidOperationException(
                 $"Expected {expected} ± {tolerance}; received {actual}.");
         }
+    }
+
+    private static void Throws<TException>(Action action)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+        throw new InvalidOperationException(
+            $"Expected {typeof(TException).Name} to be thrown.");
     }
 }

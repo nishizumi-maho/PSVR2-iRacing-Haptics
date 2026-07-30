@@ -13,9 +13,16 @@ public sealed record AppRuntimeState
     public bool SimulatedRumble { get; init; }
     public bool SimulatedTelemetry { get; init; }
     public bool Recording { get; init; }
+    public string ActiveProfileId { get; init; } = string.Empty;
+    public string ActiveProfileName { get; init; } = "Default";
+    public bool AutoProfileSelectionEnabled { get; init; }
+    public string ProfileSelectionStatus { get; init; } =
+        "Automatic profile selection is off.";
+    public TelemetryContext TelemetryContext { get; init; } = new();
     public string TelemetryStatus { get; init; } = "Not started";
     public string RumbleDeviceStatus { get; init; } = "Not started";
     public string LastEvent { get; init; } = "None";
+    public string LastIncident { get; init; } = "None";
     public ProcessedTelemetry? Diagnostics { get; init; }
     public RumbleControllerStatus? Rumble { get; init; }
 }

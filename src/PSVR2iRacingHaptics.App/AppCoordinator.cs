@@ -18,6 +18,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     private readonly IAppLogger _logger;
     private readonly object _settingsLock = new();
     private readonly object _stateLock = new();
+    private readonly object _pipelineLock = new();
     private readonly HapticDetectionPipeline _pipeline = new();
     private readonly RumbleEffectMapper _effectMapper = new();
     private readonly TelemetryRecorder _recorder;
@@ -33,6 +34,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     private AppSettings _settings;
     private AppRuntimeState _state = new();
     private DateTimeOffset _lastDiagnosticsPublish = DateTimeOffset.MinValue;
+    private string _lastProfileContextFingerprint = string.Empty;
     private bool _disposed;
 
     public AppCoordinator(
@@ -43,6 +45,12 @@ public sealed class AppCoordinator : IAsyncDisposable
     {
         _paths = paths;
         _settings = settings;
+        _state = new AppRuntimeState
+        {
+            ActiveProfileId = settings.ActiveProfileId,
+            ActiveProfileName = settings.ActiveProfile,
+            AutoProfileSelectionEnabled = settings.AutoProfileSelectionEnabled
+        };
         _settingsService = settingsService;
         _logger = logger;
         _recorder = new TelemetryRecorder(logger);
@@ -111,37 +119,30 @@ public sealed class AppCoordinator : IAsyncDisposable
         AppSettings settings,
         CancellationToken cancellationToken = default)
     {
+        var saved = await _settingsService.SaveAsync(settings, cancellationToken)
+            .ConfigureAwait(false);
         lock (_settingsLock)
         {
-            _settings = settings.DeepClone();
+            _settings = saved;
         }
 
-        await _settingsService.SaveAsync(Settings, cancellationToken).ConfigureAwait(false);
         await RecreateRumbleControllerAsync(cancellationToken).ConfigureAwait(false);
-        _pipeline.Reset();
+        lock (_pipelineLock)
+        {
+            _pipeline.Reset();
+        }
+        _lastProfileContextFingerprint = string.Empty;
         PublishState();
     }
 
     public async Task ApplyProfileAsync(
-        string profile,
+        string profileIdOrName,
         CancellationToken cancellationToken = default)
     {
-        var current = Settings;
-        var settings = ProfileCatalog.Create(profile);
-        settings.UseSimulatedRumbleDevice = current.UseSimulatedRumbleDevice;
-        settings.HapticsEnabled = current.HapticsEnabled;
-        settings.Impacts.Enabled = current.Impacts.Enabled;
-        settings.Impacts.LightEnabled = current.Impacts.LightEnabled;
-        settings.Impacts.MediumEnabled = current.Impacts.MediumEnabled;
-        settings.Impacts.StrongEnabled = current.Impacts.StrongEnabled;
-        settings.Impacts.RolloverEnabled = current.Impacts.RolloverEnabled;
-        settings.Vertical.StrongKerbsEnabled = current.Vertical.StrongKerbsEnabled;
-        settings.Vertical.LightKerbsEnabled = current.Vertical.LightKerbsEnabled;
-        settings.Vertical.LandingsEnabled = current.Vertical.LandingsEnabled;
-        settings.Vertical.WheelDropsEnabled = current.Vertical.WheelDropsEnabled;
-        settings.Vertical.SevereCompressionEnabled =
-            current.Vertical.SevereCompressionEnabled;
+        var settings = Settings;
+        ProfileCatalog.ApplyProfile(settings, profileIdOrName);
         await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Profile activated manually: {settings.ActiveProfile}.");
     }
 
     public async Task SetSimulatedRumbleAsync(
@@ -150,8 +151,172 @@ public sealed class AppCoordinator : IAsyncDisposable
     {
         var settings = Settings;
         settings.UseSimulatedRumbleDevice = simulated;
-        settings.ActiveProfile = "Custom";
         await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task CreateProfileAsync(
+        string name,
+        bool copyCurrent = true,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var profile = ProfileCatalog.AddProfile(settings, name, copyCurrent);
+        ProfileCatalog.ApplyProfile(settings, profile.Id);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Profile created: {profile.Name}.");
+    }
+
+    public async Task DuplicateProfileAsync(
+        string sourceProfileId,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var profile = ProfileCatalog.DuplicateProfile(
+            settings,
+            sourceProfileId,
+            newName);
+        ProfileCatalog.ApplyProfile(settings, profile.Id);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Profile duplicated: {profile.Name}.");
+    }
+
+    public async Task RenameProfileAsync(
+        string profileId,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        ProfileCatalog.RenameProfile(settings, profileId, newName);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Profile renamed to {newName.Trim()}.");
+    }
+
+    public async Task DeleteProfileAsync(
+        string profileId,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var profileName = ProfileCatalog.FindProfile(settings, profileId)?.Name
+            ?? profileId;
+        ProfileCatalog.DeleteProfile(settings, profileId);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Profile deleted: {profileName}.");
+    }
+
+    public async Task ResetFactoryProfileAsync(
+        string profileId,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var profileName = ProfileCatalog.FindProfile(settings, profileId)?.Name
+            ?? profileId;
+        ProfileCatalog.ResetFactoryProfile(settings, profileId);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Factory profile reset: {profileName}.");
+    }
+
+    public async Task SetAutomaticProfileSelectionAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        settings.AutoProfileSelectionEnabled = enabled;
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _lastProfileContextFingerprint = string.Empty;
+        EvaluateAutomaticProfile(State.TelemetryContext);
+    }
+
+    public async Task UpsertProfileRuleAsync(
+        ProfileAssignmentRule rule,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ProfileRuleMatcher.HasAtLeastOneFilter(rule))
+        {
+            throw new ArgumentException(
+                "At least one car or track pattern is required.",
+                nameof(rule));
+        }
+
+        var settings = Settings;
+        if (ProfileCatalog.FindProfile(settings, rule.ProfileId) is null)
+        {
+            throw new ArgumentException("The selected profile does not exist.", nameof(rule));
+        }
+
+        var existing = settings.ProfileRules.FirstOrDefault(candidate =>
+            candidate.Id.Equals(rule.Id, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            settings.ProfileRules.Add(rule);
+        }
+        else
+        {
+            var index = settings.ProfileRules.IndexOf(existing);
+            settings.ProfileRules[index] = rule;
+        }
+
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _lastProfileContextFingerprint = string.Empty;
+        EvaluateAutomaticProfile(State.TelemetryContext);
+    }
+
+    public async Task DeleteProfileRuleAsync(
+        string ruleId,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        settings.ProfileRules.RemoveAll(rule =>
+            rule.Id.Equals(ruleId, StringComparison.OrdinalIgnoreCase));
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _lastProfileContextFingerprint = string.Empty;
+        EvaluateAutomaticProfile(State.TelemetryContext);
+    }
+
+    public async Task ApplyCalibrationRecommendationsAsync(
+        CalibrationReport report,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var applied = 0;
+        foreach (var recommendation in report.Recommendations.Where(x => x.CanApply))
+        {
+            switch (recommendation.SettingPath)
+            {
+                case "Impacts.LightThreshold":
+                    settings.Impacts.LightThreshold = recommendation.SuggestedValue;
+                    break;
+                case "Impacts.MediumThreshold":
+                    settings.Impacts.MediumThreshold = recommendation.SuggestedValue;
+                    break;
+                case "Impacts.StrongThreshold":
+                    settings.Impacts.StrongThreshold = recommendation.SuggestedValue;
+                    break;
+                case "Vertical.StrongKerbThreshold":
+                    settings.Vertical.StrongKerbThreshold = recommendation.SuggestedValue;
+                    break;
+                case "Vertical.LandingThreshold":
+                    settings.Vertical.LandingThreshold = recommendation.SuggestedValue;
+                    break;
+                case "Vertical.SevereCompressionThreshold":
+                    settings.Vertical.SevereCompressionThreshold =
+                        recommendation.SuggestedValue;
+                    break;
+                default:
+                    continue;
+            }
+            applied++;
+        }
+
+        if (applied == 0)
+        {
+            throw new InvalidOperationException(
+                "This report does not contain any safe automatic recommendations.");
+        }
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info(
+            $"Applied {applied} calibration recommendation(s) to profile "
+            + $"{settings.ActiveProfile}.");
     }
 
     public Task<bool> PlayManualTestAsync(
@@ -262,7 +427,11 @@ public sealed class AppCoordinator : IAsyncDisposable
             await _activeTelemetry.StopAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        _pipeline.Reset();
+        lock (_pipelineLock)
+        {
+            _pipeline.Reset();
+        }
+        _lastProfileContextFingerprint = string.Empty;
         await _rumbleController.EmergencyStopAsync(
             "telemetry source changed",
             cancellationToken).ConfigureAwait(false);
@@ -280,10 +449,15 @@ public sealed class AppCoordinator : IAsyncDisposable
 
     private void OnTelemetryFrame(object? sender, TelemetryFrame frame)
     {
+        EvaluateAutomaticProfile(frame.Context);
+        var settings = CurrentSettingsReference();
         PipelineResult result;
         try
         {
-            result = _pipeline.Process(frame, Settings);
+            lock (_pipelineLock)
+            {
+                result = _pipeline.Process(frame, settings);
+            }
         }
         catch (Exception ex)
         {
@@ -303,30 +477,41 @@ public sealed class AppCoordinator : IAsyncDisposable
                 !frame.IsConnected ? "iRacing connection lost" : "driver out of car");
         }
 
-        if (result.SelectedEvent is not null)
+        foreach (var detected in result.Candidates)
         {
-            var detected = result.SelectedEvent;
             _logger.Info(
                 $"Event={detected.Kind}; severity={detected.Severity}; "
                 + $"score={detected.Score:F2}; {detected.Reason}");
-            EventDetected?.Invoke(this, detected);
-            var settings = Settings;
-            var eventEnabled = HapticEventPolicy.IsEnabled(detected.Kind, settings);
-            if (settings.HapticsEnabled && eventEnabled)
+        }
+
+        if (result.SelectedEvent is not null)
+        {
+            EventDetected?.Invoke(this, result.SelectedEvent);
+        }
+
+        if (result.Candidates.Count > 0)
+        {
+            var enabledCandidates = result.Candidates
+                .Where(detected => HapticEventPolicy.IsEnabled(detected, settings))
+                .ToArray();
+            if (settings.HapticsEnabled && enabledCandidates.Length > 0)
             {
-                var effect = _effectMapper.Map(detected, settings.Effects);
-                _ = _rumbleController.TryPlayAsync(effect);
+                PlayCandidateEffects(enabledCandidates, settings);
             }
             else
             {
-                _logger.Info(
-                    $"Haptic output suppressed for {detected.Kind}: "
-                    + (settings.HapticsEnabled
-                        ? "this event category is disabled."
-                        : "all haptics are disabled."));
+                foreach (var detected in result.Candidates)
+                {
+                    _logger.Info(
+                        $"Haptic output suppressed for {detected.Kind}: "
+                        + (settings.HapticsEnabled
+                            ? SuppressionReason(detected, settings)
+                            : "all haptics are disabled."));
+                }
             }
         }
 
+        var incident = result.Candidates.FirstOrDefault(IsIncident);
         var now = DateTimeOffset.UtcNow;
         if ((now - _lastDiagnosticsPublish).TotalMilliseconds >= 45
             || result.SelectedEvent is not null)
@@ -337,12 +522,187 @@ public sealed class AppCoordinator : IAsyncDisposable
                 IRacingConnected = frame.IsConnected,
                 DriverInCar = frame.IsDriverInCar,
                 TelemetryStatus = _activeTelemetry?.StatusDescription ?? "Disconnected",
+                TelemetryContext = frame.Context,
+                ActiveProfileId = settings.ActiveProfileId,
+                ActiveProfileName = settings.ActiveProfile,
                 Diagnostics = result.Diagnostics,
                 LastEvent = result.SelectedEvent is null
                     ? state.LastEvent
-                    : FormatLastEvent(result.SelectedEvent, Settings)
+                    : FormatLastEvent(result.SelectedEvent, settings),
+                LastIncident = incident is null
+                    ? state.LastIncident
+                    : FormatIncident(incident)
             });
         }
+    }
+
+    private void PlayCandidateEffects(
+        IReadOnlyList<DetectedHapticEvent> enabledCandidates,
+        AppSettings settings)
+    {
+        var physical = enabledCandidates.FirstOrDefault(candidate => !IsIncident(candidate));
+        var incident = enabledCandidates.FirstOrDefault(IsIncident);
+        if (physical is not null)
+        {
+            var physicalEffect = _effectMapper.Map(
+                physical,
+                settings.Effects,
+                settings.Incidents);
+            _ = _rumbleController.TryPlayAsync(physicalEffect);
+            if (incident is not null)
+            {
+                _ = PlayIncidentAfterPhysicalAsync(
+                    incident,
+                    physicalEffect.TotalDurationMs + 45);
+            }
+            return;
+        }
+
+        if (incident is not null)
+        {
+            _ = _rumbleController.TryPlayAsync(
+                _effectMapper.Map(
+                    incident,
+                    settings.Effects,
+                    settings.Incidents));
+        }
+    }
+
+    private async Task PlayIncidentAfterPhysicalAsync(
+        DetectedHapticEvent incident,
+        int delayMilliseconds)
+    {
+        try
+        {
+            var cancellationToken = _lifetime?.Token ?? CancellationToken.None;
+            await Task.Delay(
+                Math.Clamp(delayMilliseconds, 50, 1000),
+                cancellationToken).ConfigureAwait(false);
+            var settings = CurrentSettingsReference();
+            if (!State.DriverInCar
+                || !settings.HapticsEnabled
+                || !HapticEventPolicy.IsEnabled(incident, settings))
+            {
+                return;
+            }
+            await _rumbleController.TryPlayAsync(
+                _effectMapper.Map(
+                    incident,
+                    settings.Effects,
+                    settings.Incidents),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void EvaluateAutomaticProfile(TelemetryContext context)
+    {
+        var fingerprint = context.Fingerprint;
+        if (fingerprint == _lastProfileContextFingerprint)
+        {
+            return;
+        }
+        _lastProfileContextFingerprint = fingerprint;
+
+        AppSettings? changedSettings = null;
+        string status;
+        lock (_settingsLock)
+        {
+            if (!_settings.AutoProfileSelectionEnabled)
+            {
+                status = "Automatic profile selection is off.";
+            }
+            else
+            {
+                var match = ProfileRuleMatcher.Select(_settings, context);
+                if (match is null)
+                {
+                    status = context.HasIdentity
+                        ? "No enabled profile rule matched the current car and track."
+                        : "Waiting for iRacing car and track identity.";
+                }
+                else if (_settings.ActiveProfileId.Equals(
+                             match.Profile.Id,
+                             StringComparison.OrdinalIgnoreCase))
+                {
+                    status = match.Description;
+                }
+                else
+                {
+                    ProfileCatalog.ApplyProfile(_settings, match.Profile.Id);
+                    changedSettings = _settings.DeepClone();
+                    status = match.Description;
+                }
+            }
+        }
+
+        if (changedSettings is not null)
+        {
+            lock (_pipelineLock)
+            {
+                _pipeline.Reset();
+            }
+            _ = _rumbleController.EmergencyStopAsync("automatic profile changed");
+            _logger.Info(status);
+            _ = PersistAutomaticProfileAsync(changedSettings);
+        }
+
+        var current = CurrentSettingsReference();
+        UpdateState(state => state with
+        {
+            ActiveProfileId = current.ActiveProfileId,
+            ActiveProfileName = current.ActiveProfile,
+            AutoProfileSelectionEnabled = current.AutoProfileSelectionEnabled,
+            ProfileSelectionStatus = status,
+            TelemetryContext = context
+        });
+    }
+
+    private async Task PersistAutomaticProfileAsync(AppSettings settings)
+    {
+        try
+        {
+            await _settingsService.SaveAsync(
+                settings,
+                _lifetime?.Token ?? CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not persist the automatically selected profile.", ex);
+        }
+    }
+
+    private AppSettings CurrentSettingsReference()
+    {
+        lock (_settingsLock)
+        {
+            return _settings;
+        }
+    }
+
+    private static bool IsIncident(DetectedHapticEvent detected) =>
+        detected.Kind is HapticEventKind.Incident1x
+            or HapticEventKind.Incident2x
+            or HapticEventKind.Incident4x
+            or HapticEventKind.IncidentOther;
+
+    private static string SuppressionReason(
+        DetectedHapticEvent detected,
+        AppSettings settings)
+    {
+        if (IsIncident(detected)
+            && settings.Incidents.SuppressWhenPhysicalImpactDetected
+            && detected.HasRelatedPhysicalEvent)
+        {
+            return "duplicate incident notification is suppressed because a related "
+                + "physical impact was detected.";
+        }
+        return "this event point value, inferred type or category is disabled.";
     }
 
     private void OnTelemetryConnectionChanged(object? sender, bool connected)
@@ -460,16 +820,23 @@ public sealed class AppCoordinator : IAsyncDisposable
         StateChanged?.Invoke(this, state);
     }
 
-    private void PublishState() => UpdateState(state => state with
+    private void PublishState()
     {
-        Toolkit = _toolkit.Status,
-        HapticsEnabled = Settings.HapticsEnabled,
-        SimulatedRumble = Settings.UseSimulatedRumbleDevice,
-        RumbleDeviceStatus = Settings.UseSimulatedRumbleDevice
-            ? _simulatedRumble.StatusDescription
-            : _toolkit.StatusDescription,
-        TelemetryStatus = _activeTelemetry?.StatusDescription ?? state.TelemetryStatus
-    });
+        var settings = CurrentSettingsReference();
+        UpdateState(state => state with
+        {
+            Toolkit = _toolkit.Status,
+            HapticsEnabled = settings.HapticsEnabled,
+            SimulatedRumble = settings.UseSimulatedRumbleDevice,
+            ActiveProfileId = settings.ActiveProfileId,
+            ActiveProfileName = settings.ActiveProfile,
+            AutoProfileSelectionEnabled = settings.AutoProfileSelectionEnabled,
+            RumbleDeviceStatus = settings.UseSimulatedRumbleDevice
+                ? _simulatedRumble.StatusDescription
+                : _toolkit.StatusDescription,
+            TelemetryStatus = _activeTelemetry?.StatusDescription ?? state.TelemetryStatus
+        });
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -517,8 +884,12 @@ public sealed class AppCoordinator : IAsyncDisposable
         AppSettings settings)
     {
         var outputEnabled = settings.HapticsEnabled
-            && HapticEventPolicy.IsEnabled(detected.Kind, settings);
+            && HapticEventPolicy.IsEnabled(detected, settings);
         return $"{detected.Kind} ({detected.Score:F2})"
             + (outputEnabled ? "" : " — haptic output disabled");
     }
+
+    private static string FormatIncident(DetectedHapticEvent incident) =>
+        $"{incident.IncidentPoints}x / {incident.IncidentType}"
+        + (incident.HasRelatedPhysicalEvent ? " / related impact" : "");
 }

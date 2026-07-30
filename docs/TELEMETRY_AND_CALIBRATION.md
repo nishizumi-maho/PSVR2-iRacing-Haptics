@@ -14,6 +14,18 @@ The reader follows the dynamic IRSDK layout:
 There are no fixed offsets for `LatAccel` or any other variable. The variable
 index is rebuilt whenever the client connects.
 
+The fixed header fields required for the slowly changing YAML block follow the
+official `irsdk_header` layout:
+
+| Offset | Field |
+| ---: | --- |
+| 12 | `sessionInfoUpdate` |
+| 16 | `sessionInfoLen` |
+| 20 | `sessionInfoOffset` |
+
+The reader copies at most 8 MiB, verifies that the update counter did not change
+during the copy, and parses only the car/track fields used by the app.
+
 ## Variables and types
 
 | Variable | Type | Use |
@@ -30,7 +42,8 @@ index is rebuilt whenever the client connects.
 | `Yaw/Pitch/Roll` | float, rad | orientation/rollover |
 | `YawRate/PitchRate/RollRate` | float, rad/s | rapid rotation |
 | `Brake`, `Throttle` | float, 0–1 | reject normal braking |
-| `PlayerCarMyIncidentCount` | int | supporting evidence |
+| `PlayerCarMyIncidentCount` | int | exact cumulative point count and impact evidence |
+| `PlayerTrackSurface` | enum/int | off-track evidence |
 | `PlayerTrackSurfaceMaterial` | int | rumble material when available |
 | `LF/RF/LR/RRspeed` | float, m/s | wheel-lock evidence |
 | `LF/RF/LR/RRshockVel` | float, m/s | compression and asymmetry |
@@ -54,6 +67,32 @@ The collision score combines:
 Braking with pedal/wheel-lock evidence and its immediate transition are
 suppressed unless compatible incident or rotation evidence exists.
 
+## Incident points and inferred types
+
+The incident detector observes only positive changes between consecutive valid
+`PlayerCarMyIncidentCount` samples. The point delta is exact SDK data. The app
+does not generate an event for:
+
+- the first sample after connecting or entering the car;
+- a missing count;
+- a reset or counter decrease;
+- invalid or out-of-car telemetry.
+
+The SDK does not include a stewarding-cause variable alongside the count. The
+following labels are inferred over a configurable evidence window:
+
+| Label | Primary evidence |
+| --- | --- |
+| Off track | `PlayerTrackSurface == irsdk_OffTrack` |
+| Loss of control | sustained high angular rate without contact evidence |
+| Contact | physical collision candidate or a large collision score |
+| Rollover | extreme roll/pitch or rollover detector evidence |
+| Unknown | counter changed without sufficient evidence |
+
+Point and type switches are both policy gates. The waveform may independently
+be chosen by point value or inferred type. Related contact/rollover
+notifications are suppressed by default when a physical impact already exists.
+
 The vertical score combines:
 
 - vertical deviation in g;
@@ -76,7 +115,7 @@ the user's per-event switches only before effect mapping. Consequently:
 - a disabled category cannot send rumble;
 - the event remains visible under Diagnostics;
 - recording and marker comparison remain useful;
-- changing a profile does not overwrite the user's category choices.
+- switching profiles loads that profile's deliberate category choices.
 
 Light kerbs are a special case: enabling them also lowers the kerb detector's
 threshold. They remain off by default to prevent continuous track-surface
@@ -90,8 +129,9 @@ Entry types:
 - `marker`: current frame plus marker text.
 
 Replay runs the current detectors again. Marker comparison looks for a
-compatible category in a 500 ms window and reports missed markers and unmarked
-detections.
+compatible category from 2,000 ms before the click through 250 ms after it,
+reports per-marker timing and peak score, and includes every detector candidate
+rather than only the highest-priority event.
 
 ## Recommended calibration process
 
@@ -102,14 +142,14 @@ detections.
 5. Confirm that normal driving remains quiet.
 6. Record controlled events in a test session and mark each immediately.
 7. Compare markers with current settings.
-8. Lower only the relevant threshold by 0.10–0.20 for a missed event.
-9. Raise only the relevant threshold by 0.10–0.20 for a false positive.
+8. Review a missed-event suggestion 8% below its observed peak.
+9. Review a false-positive suggestion with an 8% margin above its score.
 10. Change one value at a time and replay the same recording.
 11. Adjust frequency/duration only after detection is reliable.
 
 Interpretation:
 
-- `Matched`: compatible detection within 500 ms of the marker;
+- `Matched`: compatible detection in the reaction-time window;
 - `Missed`: marker without compatible detection;
 - `Unmarked detection`: detection without a marker.
 
@@ -121,6 +161,27 @@ strength.
 
 Initial values are functional hypotheses verified by simulation, not universal
 calibration for every car.
+
+Automatic recommendations are bounded, grouped by setting and never applied
+without confirmation. If the same recording asks to both raise and lower one
+threshold, the app reports a conflict and disables automatic application.
+Incident markers validate point/type detection but never modify physical
+thresholds.
+
+## Automatic profile identity
+
+`IRacingSessionInfoParser` extracts:
+
+- `DriverInfo.DriverCarIdx`;
+- the matching `Drivers` entry's `CarID`, `CarClassID`, `CarPath`,
+  `CarScreenName`, `CarScreenNameShort` and `CarClassShortName`;
+- `WeekendInfo.TrackID`, `TrackName`, `TrackDisplayName`,
+  `TrackDisplayShortName` and `TrackConfigName`.
+
+Rules accept case-insensitive `*`/`?` wildcards. All populated fields are AND
+conditions. Higher priority wins; equal priority uses greater specificity and
+then rule name. Automatic selection is opt-in and retains the current profile
+when no rule matches.
 
 The telemetry simulator passes through the same pipeline, event switches and
 effect mapping as iRacing. Select the real Toolkit device for a physical

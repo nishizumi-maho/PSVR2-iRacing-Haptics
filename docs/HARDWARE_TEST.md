@@ -44,7 +44,38 @@ If any pulse does not stop:
 5. Re-enable light impacts and save.
 6. Run the same scenario and confirm that rumble is now produced.
 7. Repeat for landing, strong kerb and rollover.
-8. Apply another profile and confirm that disabled categories remain disabled.
+8. Save this setup as a user profile, switch away and back, and confirm that
+   the profile restores its own disabled categories.
+
+## Profile assignment test
+
+1. Enter an iRacing test session and open **Profiles**.
+2. Confirm that detected car/track values are populated.
+3. Create a user profile and add a rule with **Use detected car and track**.
+4. Enable automatic selection and save.
+5. Switch manually to another profile, leave the session and re-enter it.
+6. Confirm that the rule selects the expected profile and that the result is
+   explained under Status, Profiles, Diagnostics and logs.
+7. Change only the track configuration and confirm that a configuration-specific
+   rule does not match the wrong layout.
+8. Disable automatic selection and confirm that the current profile remains
+   unchanged when car/track identity changes.
+
+## Incident test
+
+1. Keep incident haptics off and record a controlled 1x off track.
+2. Confirm that Diagnostics/logs show the counter delta without rumble.
+3. Enable incident haptics, the 1x gate and the off-track gate.
+4. Select point-based patterns and reproduce a safe 1x event.
+5. Repeat with type-based patterns and confirm that the off-track waveform is
+   used.
+6. For a contact test, keep duplicate protection on. Confirm that the physical
+   impact rumbles once while the related incident remains logged.
+7. Disable duplicate protection only for a controlled test and confirm that the
+   incident pattern follows the physical effect instead of interrupting it.
+
+The point delta should match the SDK counter exactly. Off-track/contact/loss-of-
+control/rollover labels are heuristic and must be reported as such.
 
 ## Failure tests
 

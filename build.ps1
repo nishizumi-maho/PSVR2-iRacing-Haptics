@@ -11,8 +11,13 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $solution = Join-Path $root "PSVR2iRacingHaptics.sln"
 $testProject = Join-Path $root "tests\PSVR2iRacingHaptics.Tests\PSVR2iRacingHaptics.Tests.csproj"
 $appProject = Join-Path $root "src\PSVR2iRacingHaptics.App\PSVR2iRacingHaptics.App.csproj"
+$buildProperties = [xml](Get-Content (Join-Path $root "Directory.Build.props"))
+$version = [string]$buildProperties.Project.PropertyGroup.Version
+if ([string]::IsNullOrWhiteSpace($version)) {
+    throw "The application version is missing from Directory.Build.props."
+}
 $publishDir = Join-Path $root "build\portable\PSVR2iRacingHaptics"
-$zipPath = Join-Path $root "build\PSVR2-iRacing-Haptics-v0.2.0-win-x64-portable.zip"
+$zipPath = Join-Path $root "build\PSVR2-iRacing-Haptics-v$version-$Runtime-portable.zip"
 $hashPath = "$zipPath.sha256"
 
 $sdkVersion = dotnet --version

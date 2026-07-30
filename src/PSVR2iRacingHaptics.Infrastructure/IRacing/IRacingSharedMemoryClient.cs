@@ -14,6 +14,9 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
     private const uint WaitObject0 = 0x00000000;
     private const int HeaderSize = 112;
     private const int VarHeaderSize = 144;
+    public const int SessionInfoUpdateOffset = 12;
+    public const int SessionInfoLengthOffset = 16;
+    public const int SessionInfoDataOffsetOffset = 20;
 
     private readonly IAppLogger _logger;
     private readonly Dictionary<string, VariableDescriptor> _variables =
@@ -24,7 +27,9 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
     private nint _memory;
     private nint _dataEvent;
     private int _lastTick = int.MinValue;
+    private int _lastSessionInfoUpdate = int.MinValue;
     private bool _lastInCar;
+    private TelemetryContext _context = new();
 
     public IRacingSharedMemoryClient(IAppLogger? logger = null)
     {
@@ -103,6 +108,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
                 if (!IsConnected)
                 {
                     BuildVariableIndex();
+                    RefreshSessionContext(force: true);
                     SetConnected(true, $"iRacing connected ({_variables.Count} variables)");
                     LogVariableAvailability();
                 }
@@ -111,6 +117,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
                 if (TryReadLatestRow(out var tick, out var row) && tick != _lastTick)
                 {
                     _lastTick = tick;
+                    RefreshSessionContext();
                     var frame = BuildFrame(tick, row);
                     if (_lastInCar != frame.IsDriverInCar)
                     {
@@ -268,6 +275,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
             IsReplayPlaying = ReadBool(row, "IsReplayPlaying"),
             SessionState = ReadInt(row, "SessionState"),
             EnterExitReset = ReadInt(row, "EnterExitReset"),
+            Context = _context,
             SpeedMps = ReadFloat(row, "Speed"),
             LatAccelMps2 = ReadFloat(row, "LatAccel"),
             LongAccelMps2 = ReadFloat(row, "LongAccel"),
@@ -305,6 +313,63 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
             TireLrRumblePitchHz = ReadNullableFloat(row, "TireLR_RumblePitch"),
             TireRrRumblePitchHz = ReadNullableFloat(row, "TireRR_RumblePitch")
         };
+    }
+
+    private void RefreshSessionContext(bool force = false)
+    {
+        var update = ReadInt32(SessionInfoUpdateOffset);
+        if (!force && update == _lastSessionInfoUpdate)
+        {
+            return;
+        }
+
+        var length = ReadInt32(SessionInfoLengthOffset);
+        var offset = ReadInt32(SessionInfoDataOffsetOffset);
+        if (length is <= 0 or > 8_000_000 || offset < HeaderSize)
+        {
+            _logger.Warning(
+                $"Invalid iRacing SessionInfo location: length={length}, offset={offset}.");
+            _lastSessionInfoUpdate = update;
+            return;
+        }
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var bytes = new byte[length];
+            Marshal.Copy(_memory + offset, bytes, 0, length);
+            if (ReadInt32(SessionInfoUpdateOffset) != update)
+            {
+                update = ReadInt32(SessionInfoUpdateOffset);
+                continue;
+            }
+
+            var terminator = Array.IndexOf(bytes, (byte)0);
+            var yaml = Encoding.UTF8.GetString(
+                bytes,
+                0,
+                terminator >= 0 ? terminator : bytes.Length);
+            var parsed = IRacingSessionInfoParser.Parse(yaml, update);
+            var identityChanged =
+                !parsed.CarPath.Equals(_context.CarPath, StringComparison.OrdinalIgnoreCase)
+                || parsed.CarId != _context.CarId
+                || !parsed.TrackName.Equals(
+                    _context.TrackName,
+                    StringComparison.OrdinalIgnoreCase)
+                || !parsed.TrackConfigName.Equals(
+                    _context.TrackConfigName,
+                    StringComparison.OrdinalIgnoreCase);
+            _context = parsed;
+            _lastSessionInfoUpdate = update;
+            if (identityChanged && parsed.HasIdentity)
+            {
+                _logger.Info(
+                    $"iRacing identity: car={parsed.CarDisplayName}; "
+                    + $"class={EmptyAsUnknown(parsed.CarClass)}; "
+                    + $"track={parsed.TrackDisplayLabel}; "
+                    + $"CarPath={EmptyAsUnknown(parsed.CarPath)}.");
+            }
+            return;
+        }
     }
 
     private bool ReadBool(byte[] row, string name) =>
@@ -436,8 +501,13 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
         }
         _variables.Clear();
         _lastTick = int.MinValue;
+        _lastSessionInfoUpdate = int.MinValue;
         _lastInCar = false;
+        _context = new TelemetryContext();
     }
+
+    private static string EmptyAsUnknown(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "unknown" : value;
 
     public async ValueTask DisposeAsync()
     {

@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.0.0 — 2026-07-30
+
+- added persistent, user-created profiles with create, duplicate, rename, delete
+  and factory-reset operations;
+- made detector thresholds, event switches, incident policy and rumble patterns
+  independent for every profile;
+- added optional automatic profile activation using car and track identity from
+  the iRacing `SessionInfo` SDK block;
+- added prioritized wildcard assignment rules for `CarPath`, display name,
+  class, `TrackName` and track configuration;
+- added exact incident-point events from changes in
+  `PlayerCarMyIncidentCount`, including separately configurable 1x, 2x, 4x and
+  other-point patterns;
+- added best-effort off-track, loss-of-control, contact, rollover and unknown
+  incident classifications, each with independent output switches and optional
+  type-based rumble patterns;
+- added duplicate protection so a physical impact and its related incident
+  notification do not rumble twice unless explicitly requested;
+- expanded the calibration recorder with incident markers, human-reaction-time
+  matching, per-marker details and bounded threshold recommendations;
+- fixed the iRacing shared-memory offsets used to read the `SessionInfo` update,
+  length and data location;
+- expanded the simulator with 1x off-track, 2x loss-of-control and 4x contact
+  incident scenarios;
+- added Windows GitHub Actions validation, portable packaging, SHA-256 output
+  and automatic GitHub release publishing;
+- expanded architecture, telemetry, calibration, hardware-test and contribution
+  documentation;
+- expanded automated coverage to profile CRUD/migration, rule matching, SDK
+  identity parsing, incident detection/policy/mapping and calibration advice.
+
 ## 0.2.0 — 2026-07-29
 
 - translated the complete app UI, runtime messages, logs, tests and
