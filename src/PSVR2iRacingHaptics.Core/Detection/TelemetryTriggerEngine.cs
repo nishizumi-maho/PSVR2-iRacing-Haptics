@@ -245,13 +245,15 @@ public sealed class TelemetryTriggerEngine
         var raw = ReadSignal(telemetry, condition.Signal);
         if (!raw.HasValue || !double.IsFinite(raw.Value))
         {
-            var matched =
+            var missingMatched =
                 condition.MissingSignalBehavior == MissingSignalBehavior.PassCondition;
             return new TriggerConditionEvaluation(
                 condition.Signal,
                 null,
-                matched,
-                matched ? "signal missing; configured to pass" : "signal missing");
+                missingMatched,
+                missingMatched
+                    ? "signal missing; configured to pass"
+                    : "signal missing");
         }
 
         var observed = condition.UseAbsoluteValue
