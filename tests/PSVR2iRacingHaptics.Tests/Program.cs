@@ -976,7 +976,10 @@ internal static class Program
             var path = Path.Combine(directory, "recording.jsonl");
             await using var recorder = new TelemetryRecorder();
             await recorder.StartAsync(path);
-            var frame = ValidFrame(DateTimeOffset.UtcNow, 1);
+            var frame = ValidFrame(DateTimeOffset.UtcNow, 1) with
+            {
+                Context = PlayerContext()
+            };
             await recorder.RecordFrameAsync(frame);
             await recorder.MarkAsync("Impact");
             await recorder.StopAsync();
@@ -988,6 +991,8 @@ internal static class Program
             Equal(2, entries.Count);
             Equal("frame", entries[0].EntryType);
             Equal("marker", entries[1].EntryType);
+            Equal("porsche911rgt3", entries[0].Frame!.Context.CarPath);
+            Equal("spa", entries[1].Frame!.Context.TrackName);
         }
         finally
         {

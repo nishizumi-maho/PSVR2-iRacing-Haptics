@@ -326,7 +326,7 @@ examples, incident pattern modes, precedence and troubleshooting.
 
 Portable mode: `data\logs\psvr2-iracing-haptics.log`.
 
-Logs include app version, available DLL path/version, initialization result,
+Logs include app version, Toolkit DLL path, initialization result,
 driver state, iRacing connection and in-car changes, detection values and
 reasons, suppressed event categories, rumble patterns, cancellations, errors
 and `Rumble: OFF`. Logs rotate at 5 MiB with four retained files.
