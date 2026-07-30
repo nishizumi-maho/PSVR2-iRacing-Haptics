@@ -51,9 +51,11 @@ internal static class Program
             settingsService,
             logger);
         using var form = new MainForm(coordinator);
-        form.CreateControl();
+        var handle = form.Handle;
         form.PerformLayout();
-        if (!form.IsHandleCreated)
+        form.Size = form.MinimumSize;
+        form.PerformLayout();
+        if (handle == IntPtr.Zero || !form.IsHandleCreated)
         {
             throw new InvalidOperationException(
                 "The main window did not create a native Windows handle.");
