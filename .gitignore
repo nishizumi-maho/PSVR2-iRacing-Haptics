@@ -4,6 +4,7 @@ obj/
 data/
 build/portable/
 build/*.zip
+build/*.sha256
 *.user
 *.suo
 *.log

@@ -18,8 +18,8 @@ public sealed class TelemetrySimulator : ITelemetryClient
 
     public bool IsConnected { get; private set; }
     public string StatusDescription => IsConnected
-        ? "Simulador de telemetria conectado"
-        : "Simulador de telemetria parado";
+        ? "Telemetry simulator connected"
+        : "Telemetry simulator stopped";
 
     public event EventHandler<TelemetryFrame>? FrameReceived;
     public event EventHandler<bool>? ConnectionChanged;
@@ -34,7 +34,7 @@ public sealed class TelemetrySimulator : ITelemetryClient
         _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         IsConnected = true;
         ConnectionChanged?.Invoke(this, true);
-        _logger.Info("Simulador de telemetria iniciado.");
+        _logger.Info("Telemetry simulator started.");
         _idleLoop = IdleLoopAsync(_lifetimeCancellation.Token);
         return Task.CompletedTask;
     }
@@ -51,7 +51,7 @@ public sealed class TelemetrySimulator : ITelemetryClient
         await _scenarioGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _logger.Info($"Cenário iniciado: {scenario}.");
+            _logger.Info($"Scenario started: {scenario}.");
             var frames = TelemetryScenarioFactory.Create(
                 scenario,
                 DateTimeOffset.UtcNow,
@@ -77,7 +77,7 @@ public sealed class TelemetrySimulator : ITelemetryClient
                 IsConnected = true;
                 ConnectionChanged?.Invoke(this, true);
             }
-            _logger.Info($"Cenário concluído: {scenario}.");
+            _logger.Info($"Scenario completed: {scenario}.");
         }
         finally
         {
@@ -135,7 +135,7 @@ public sealed class TelemetrySimulator : ITelemetryClient
         lifetime.Dispose();
         IsConnected = false;
         ConnectionChanged?.Invoke(this, false);
-        _logger.Info("Simulador de telemetria parado.");
+        _logger.Info("Telemetry simulator stopped.");
     }
 
     public async ValueTask DisposeAsync()

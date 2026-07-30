@@ -1,71 +1,91 @@
-# Procedimento de teste em hardware real
+# Real-hardware test procedure
 
-## Preparação
+## Preparation
 
-1. Leia o aviso e o guia de jailbreak do PSVR2 Toolkit.
-2. Confirme que o Toolkit oficial funciona sozinho.
-3. Feche qualquer outro aplicativo que envie rumble ao HMD.
-4. Deixe o botão **PARAR VIBRAÇÃO AGORA** visível.
-5. Comece com o headset fora da cabeça se isso for compatível com sua
-   configuração e procedimento seguro.
+1. Read the PSVR2 Toolkit warning and jailbreak guide.
+2. Confirm that the official Toolkit works by itself.
+3. Close every other application that can send HMD rumble.
+4. Keep **STOP ALL RUMBLE NOW** visible.
+5. If compatible with the upstream procedure, begin with the headset off your
+   head.
 
-## Teste da API
+## C API test
 
-1. Inicie Toolkit/SteamVR.
-2. Abra o aplicativo.
-3. Confirme:
-   - arquivo de caminho encontrado;
-   - DLL carregada;
-   - API inicializada;
-   - driver ativo.
-4. Em **Teste manual**, use 10 Hz, 40 ms, um pulso.
-5. Clique em iniciar.
-6. Confirme fisicamente que a vibração começa e termina.
-7. Clique em parada imediata e confirme ausência de vibração.
-8. Repita gradualmente com 14, 18, 21 e 25 Hz, sem ultrapassar 25.
+1. Start PSVR2 Toolkit and SteamVR.
+2. Open this app.
+3. Confirm that Status shows:
+   - Toolkit path file found;
+   - C API DLL loaded;
+   - C API initialized;
+   - Toolkit driver active.
+4. On **Manual test**, use 12 Hz, 120 ms and one pulse.
+5. Start the test.
+6. Physically confirm that rumble starts and then stops.
+7. Click **Stop immediately** and confirm that no rumble remains.
+8. Test 14, 18, 21 and 25 Hz gradually, keeping 120 ms at first and never
+   exceeding 25 Hz.
+9. Only then compare 80, 120, 160 and 200 ms. Pause between tests and stop if
+   the sensation becomes uncomfortable.
 
-Se qualquer pulso não terminar:
+If any pulse does not stop:
 
-1. pressione parada imediata;
-2. feche o aplicativo;
-3. encerre o Toolkit/SteamVR;
-4. desconecte/reinicie conforme a documentação oficial;
-5. guarde o log e não continue antes de entender a falha.
+1. press the emergency stop;
+2. close this app;
+3. stop PSVR2 Toolkit and SteamVR;
+4. disconnect/restart the equipment as described by the upstream project;
+5. preserve the log and do not continue until the failure is understood.
 
-## Teste de falhas
+## Event-switch test
 
-- execute o app sem Toolkit: não deve fechar nem travar;
-- inicie o Toolkit depois: a detecção deve se recuperar;
-- desligue haptics durante um pulso: deve aparecer `Rumble: OFF`;
-- desconecte/encerre o driver durante inatividade;
-- encerre o iRacing durante inatividade;
-- saia do carro: nenhum evento deve ser emitido;
-- feche o aplicativo após um teste: o log deve registrar OFF.
+1. Open **Effects**.
+2. Disable light impacts and save.
+3. Run the Side impact simulator scenario with real hardware selected.
+4. Confirm that the event appears under Diagnostics but produces no rumble.
+5. Re-enable light impacts and save.
+6. Run the same scenario and confirm that rumble is now produced.
+7. Repeat for landing, strong kerb and rollover.
+8. Apply another profile and confirm that disabled categories remain disabled.
 
-Evite provocar a perda do driver durante vibração até que o comportamento
-básico esteja confirmado; a função nativa atual pode bloquear nessa corrida.
+## Failure tests
 
-## Teste no iRacing
+- run the app without the Toolkit; it must remain open and responsive;
+- start the Toolkit later; discovery should recover;
+- disable all haptics during a pulse; the log should show `Rumble: OFF`;
+- disconnect or stop the driver while idle;
+- close iRacing while idle;
+- exit the car; no new effect should be sent;
+- close the app after a test; the log should record OFF.
 
-1. Use uma sessão offline/test drive.
-2. Ative gravação JSONL.
-3. Faça voltas sem bater e use zebras leves.
-4. Verifique ausência de vibração contínua.
-5. Passe em zebra alta e marque o evento.
-6. Faça um pouso/descida forte seguro e marque.
-7. Produza contato leve, médio e forte em condições controladas.
-8. Compare as marcações e ajuste limiares.
+Avoid deliberately losing the driver during active rumble until basic behavior
+is confirmed. The current native function may block in that race condition.
 
-Não calibre em corrida oficial. Os sensores de suspensão e rumble pitch variam
-por carro; repita o teste ao mudar drasticamente de categoria.
+## iRacing calibration test
 
-## Evidências a guardar
+1. Use an offline test-drive session.
+2. Apply the Default profile.
+3. Record two or three clean laps with ordinary braking and kerbs.
+4. Confirm that normal driving does not create unwanted effects.
+5. Start a new JSONL recording.
+6. Reproduce one controlled event at a time and add the matching marker
+   immediately.
+7. Stop recording and compare markers.
+8. Lower a missed event's matching threshold by 0.10–0.20.
+9. Raise a threshold by 0.10–0.20 when normal driving causes false positives.
+10. Change one value at a time and replay the same JSONL after each change.
+11. Tune frequency and duration only after event detection is reliable.
 
-- versão do Toolkit instalada;
-- carro/pista;
-- arquivo JSONL;
-- log rotativo;
-- valores de perfil;
-- se zero desligou o motor;
-- sensação relativa em 10/14/18/21/25 Hz;
-- ocorrência de falsos positivos.
+Do not calibrate in an official race. Suspension and rumble-pitch channels
+vary by car, so repeat the test when changing to a substantially different
+vehicle category.
+
+## Evidence to retain
+
+- installed Toolkit version;
+- car and track;
+- JSONL recording;
+- rotating log;
+- profile/settings values;
+- whether zero stopped the motor;
+- relative sensation at 10/14/18/21/25 Hz;
+- shortest clearly perceptible duration in each tested range;
+- false positives and missed markers.

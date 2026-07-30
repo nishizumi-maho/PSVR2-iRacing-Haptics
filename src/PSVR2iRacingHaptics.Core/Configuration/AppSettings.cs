@@ -2,8 +2,10 @@ namespace PSVR2iRacingHaptics.Core.Configuration;
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 1;
-    public string ActiveProfile { get; set; } = "Padrão";
+    public const int CurrentSchemaVersion = 3;
+
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+    public string ActiveProfile { get; set; } = "Default";
     public bool HapticsEnabled { get; set; } = true;
     public bool UseSimulatedRumbleDevice { get; set; }
     public ImpactSettings Impacts { get; set; } = new();
@@ -21,6 +23,10 @@ public sealed class AppSettings
 public sealed class ImpactSettings
 {
     public bool Enabled { get; set; } = true;
+    public bool LightEnabled { get; set; } = true;
+    public bool MediumEnabled { get; set; } = true;
+    public bool StrongEnabled { get; set; } = true;
+    public bool RolloverEnabled { get; set; } = true;
     public double Sensitivity { get; set; } = 1.0;
     public double LightThreshold { get; set; } = 1.45;
     public double MediumThreshold { get; set; } = 2.85;
@@ -51,8 +57,8 @@ public sealed class VerticalImpactSettings
 
 public sealed class SafetySettings
 {
-    public int MaximumContinuousRumbleMs { get; set; } = 300;
-    public int MaximumEffectDurationMs { get; set; } = 700;
+    public int MaximumContinuousRumbleMs { get; set; } = 250;
+    public int MaximumEffectDurationMs { get; set; } = 550;
     public int MaximumCallsPerSecond { get; set; } = 20;
     public int NativeCallTimeoutMs { get; set; } = 1200;
 }
@@ -70,41 +76,41 @@ public sealed class EffectPatternSettings
 public sealed class EffectSettings
 {
     public EffectPatternSettings LightImpact { get; set; } =
-        new() { FrequencyHz = 12, DurationMs = 75 };
+        new() { FrequencyHz = 12, DurationMs = 120 };
 
     public EffectPatternSettings MediumImpact { get; set; } =
-        new() { FrequencyHz = 18, DurationMs = 125 };
+        new() { FrequencyHz = 18, DurationMs = 160 };
 
     public EffectPatternSettings StrongImpact { get; set; } =
         new()
         {
             FrequencyHz = 24,
-            DurationMs = 145,
+            DurationMs = 200,
             PulseCount = 1,
-            GapMs = 40,
+            GapMs = 55,
             TailFrequencyHz = 21,
-            TailDurationMs = 80
+            TailDurationMs = 100
         };
 
     public EffectPatternSettings Rollover { get; set; } =
-        new() { FrequencyHz = 22, DurationMs = 90, PulseCount = 2, GapMs = 45 };
+        new() { FrequencyHz = 22, DurationMs = 120, PulseCount = 2, GapMs = 65 };
 
     public EffectPatternSettings StrongKerb { get; set; } =
-        new() { FrequencyHz = 13, DurationMs = 60 };
+        new() { FrequencyHz = 14, DurationMs = 110 };
 
     public EffectPatternSettings WheelDrop { get; set; } =
-        new() { FrequencyHz = 15, DurationMs = 80 };
+        new() { FrequencyHz = 16, DurationMs = 130 };
 
     public EffectPatternSettings Landing { get; set; } =
         new()
         {
-            FrequencyHz = 18,
-            DurationMs = 60,
-            GapMs = 30,
-            TailFrequencyHz = 14,
-            TailDurationMs = 50
+            FrequencyHz = 19,
+            DurationMs = 140,
+            GapMs = 60,
+            TailFrequencyHz = 15,
+            TailDurationMs = 110
         };
 
     public EffectPatternSettings SevereCompression { get; set; } =
-        new() { FrequencyHz = 20, DurationMs = 105 };
+        new() { FrequencyHz = 20, DurationMs = 150 };
 }

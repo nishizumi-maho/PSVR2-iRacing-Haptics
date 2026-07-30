@@ -1,41 +1,41 @@
-# Análise do PSVR2 Toolkit
+# PSVR2 Toolkit analysis
 
-## Escopo
+## Scope
 
-- repositório: `BnuuySolutions/PSVR2Toolkit`;
+- repository: `BnuuySolutions/PSVR2Toolkit`;
 - branch: `main`;
-- commit analisado: `9e24e6ef475660481e8b46366aaa3cb24d0b4fde`;
-- data do commit: 29/07/2026;
-- versão definida em `projects/common/config.h`: driver `0.2.1`, branch conforme
-  configuração de build;
-- nenhuma alteração foi feita no repositório.
+- reviewed commit: `9e24e6ef475660481e8b46366aaa3cb24d0b4fde`;
+- commit date: July 29, 2026;
+- version defined in `projects/common/config.h`: driver `0.2.1`, branch
+  determined by build configuration;
+- no change was made to the Toolkit repository.
 
-## Descoberta e carregamento
+## Discovery and loading
 
-`CustomShareManager::setupCAPIPath()` é chamado por
-`projects/psvr2_openvr_driver_ex/device_provider_proxy.cpp`. No Windows, ele
-descobre a pasta da DLL que contém o gerenciador e grava o diretório em:
+`CustomShareManager::setupCAPIPath()` is called by
+`projects/psvr2_openvr_driver_ex/device_provider_proxy.cpp`. On Windows it
+discovers the directory containing the manager's DLL and writes that directory
+to:
 
 ```text
 %TEMP%\psvr2tk_capi_path.txt
 ```
 
-O loader oficial em
+The official loader in
 `projects/psvr2_toolkit_capi_loader/psvr2tk_capi_loader.cpp`:
 
-1. lê somente a primeira linha;
-2. acrescenta `psvr2_toolkit_capi.dll`;
-3. em Windows chama `LoadLibraryExA` com
-   `LOAD_WITH_ALTERED_SEARCH_PATH`;
-4. resolve os exports por `GetProcAddress`.
+1. reads only the first line;
+2. appends `psvr2_toolkit_capi.dll`;
+3. calls `LoadLibraryExA` with `LOAD_WITH_ALTERED_SEARCH_PATH` on Windows;
+4. resolves exports with `GetProcAddress`.
 
-O aplicativo C# replica a descoberta, usa caminho absoluto com
-`NativeLibrary.Load` e `NativeLibrary.GetExport`, e não depende de PATH,
-registro ou `System32`.
+The C# app follows the same discovery path, loads the absolute DLL path with
+`NativeLibrary.Load`, resolves functions with `NativeLibrary.GetExport`, and
+does not depend on `PATH`, the registry or `System32`.
 
-## Assinaturas e ABI
+## Signatures and ABI
 
-O cabeçalho `projects/psvr2_toolkit_capi/psvr2tk_capi.h` declara:
+The header `projects/psvr2_toolkit_capi/psvr2tk_capi.h` declares:
 
 ```cpp
 int  psvr2_toolkit_init();
@@ -44,123 +44,126 @@ bool psvr2_toolkit_get_driver_active();
 void psvr2_toolkit_set_hmd_rumble(uint8_t rumbleHz);
 ```
 
-No cliente .NET:
+In the .NET client:
 
-- `int` é `Int32`;
-- `uint8_t` é `byte`;
-- o `bool` C++ é marshalled como `UnmanagedType.I1`;
-- todos os exports são `extern "C"`;
-- calling convention adotada: Cdecl; no ABI Windows x64 a convenção é
-  unificada.
+- `int` maps to `Int32`;
+- `uint8_t` maps to `byte`;
+- C++ `bool` is marshalled as `UnmanagedType.I1`;
+- all exports are `extern "C"`;
+- Cdecl is declared; the Windows x64 ABI uses a unified calling convention.
 
-Não foi necessária biblioteca intermediária C++.
+No C++ bridge library was required.
 
-## Inicialização e slots
+## Initialization and slots
 
-`psvr2_toolkit_init()` cria o singleton de compartilhamento, verifica o mutex
-que representa o driver ativo e tenta adquirir um slot.
+`psvr2_toolkit_init()` creates the sharing singleton, checks the mutex
+representing an active driver and attempts to acquire a client slot.
 
-| Código | Constante | Significado |
+| Code | Constant | Meaning |
 | ---: | --- | --- |
-| 0 | `PSVR2TK_RESULT_OK` | inicializado |
-| -1 | `PSVR2TK_RESULT_DRIVER_INACTIVE` | driver inativo |
-| -2 | `PSVR2TK_RESULT_NO_SLOT` | nenhum slot livre |
+| 0 | `PSVR2TK_RESULT_OK` | initialized |
+| -1 | `PSVR2TK_RESULT_DRIVER_INACTIVE` | driver inactive |
+| -2 | `PSVR2TK_RESULT_NO_SLOT` | no free slot |
 
-`projects/libcustomshare/custom_share_manager.h` define `k_maxSlots = 8`.
-`psvr2_toolkit_deinit()` libera o slot, mas não contém comando de rumble OFF.
+`projects/libcustomshare/custom_share_manager.h` defines `k_maxSlots = 8`.
+`psvr2_toolkit_deinit()` releases the slot but does not send a rumble-OFF
+command.
 
-## Caminho do comando de vibração
+## Rumble command path
 
 `psvr2_toolkit_set_hmd_rumble`:
 
-1. cria `DriverCommand`;
-2. define `type = DriverCommandType::HeadsetRumbleSet`;
-3. grava um `uint8_t rumbleHz`;
-4. chama `CustomShareManager::submitCommand`.
+1. creates a `DriverCommand`;
+2. sets `type = DriverCommandType::HeadsetRumbleSet`;
+3. stores one `uint8_t rumbleHz`;
+4. calls `CustomShareManager::submitCommand`.
 
-O comando entra no buffer circular compartilhado de 256 entradas. O thread do
-driver em `projects/psvr2_openvr_driver_ex/command_thread.cpp` consome comandos
-e, para `HeadsetRumbleSet`, chama:
+The command enters a 256-entry shared ring buffer. The driver thread in
+`projects/psvr2_openvr_driver_ex/command_thread.cpp` consumes commands and
+handles `HeadsetRumbleSet` by calling:
 
 ```cpp
 ControlCommand(true, 0x08, &rumbleHz, 1, 0, 0, 1);
 ```
 
-Portanto o Toolkit continua responsável pelo IPC, thread do driver e comando
-USB. Este aplicativo é apenas um cliente da C API.
+PSVR2 Toolkit therefore remains responsible for IPC, the driver thread and the
+USB control command. This app is only an external C API client.
 
-## Limites comprovados e não comprovados
+## Proven and unproven limits
 
-### Intervalo
+### Range
 
-A API aceita `uint8_t` e não aplica clamp. Logo o intervalo estrutural é
-`0–255`. O aplicativo oficial `psvr2_toolkit_capi_test` apresenta um
-`SliderInt` de `0` a `25`. Não há evidência pública no caminho analisado de que
-valores acima de 25 sejam válidos ou seguros. O cliente limita a `0–25`.
+The API accepts `uint8_t` and applies no clamp, so the structural range is
+`0–255`. The official `psvr2_toolkit_capi_test` presents an ImGui `SliderInt`
+from `0` to `25`. Nothing in the reviewed public path demonstrates that values
+above 25 are valid or safe. This client enforces `0–25`.
 
-### Zero e persistência
+### Zero and persistence
 
-O teste oficial permite enviar zero. O driver encaminha o byte sem tratamento.
-Não há timer, duração, envelope nem auto-off na C API ou no tratamento
-`HeadsetRumbleSet`. Assim:
+The official test allows zero. The driver forwards the byte without special
+handling. No timer, duration, envelope or auto-off behavior exists in the C API
+or the visible `HeadsetRumbleSet` path. Therefore:
 
-- a origem pública é compatível com `0 = parar`, mas o firmware que interpreta
-  `0x08` não está no repositório;
-- não existe desligamento automático visível;
-- o aplicativo sempre encerra pulsos com zero;
-- a primeira validação em hardware deve confirmar que zero realmente cessa o
+- public source is consistent with `0 = stop`, but the firmware interpreting
+  command `0x08` is not present in the repository;
+- no automatic stop behavior is visible;
+- this app ends every pulse with zero;
+- the first hardware validation must confirm that zero actually stops the
   motor.
 
-### Intensidade e frequência física
+### Intensity and physical frequency
 
-Não há intensidade. O parâmetro, estrutura e UI são denominados `rumbleHz`, mas
-o código apenas encaminha o byte. Não existe calibração/medição física no
-Toolkit público. Frequência solicitada não deve ser descrita como intensidade.
+There is no separate intensity control. The parameter, structure and UI call
+the value `rumbleHz`, but source code only forwards the byte. The public Toolkit
+contains no physical calibration or measurement. Requested frequency must not
+be described as intensity.
 
-### Retorno e falhas
+### Return value and failures
 
-O envio retorna `void`. Se o driver já estiver inativo,
-`submitCommand()` retorna sem enfileirar. Se o driver desaparecer depois da
-verificação, o loop atual de espera por `isFulfilled` não possui deadline
-efetivo, apesar do comentário sobre cinco segundos. Por isso o cliente:
+The send function returns `void`. If the driver is already inactive,
+`submitCommand()` returns without queueing. If the driver disappears after that
+check, the current wait loop for `isFulfilled` has no effective deadline despite
+a comment referring to five seconds. The client therefore:
 
-- chama fora da UI;
-- serializa as chamadas;
-- aplica timeout;
-- bloqueia novas chamadas depois de timeout;
-- não descarrega a DLL se uma chamada nativa pode continuar executando.
+- calls native code away from the UI thread;
+- serializes native calls;
+- applies a timeout;
+- blocks new native calls after a timeout;
+- does not unload the DLL while a native call may still be running.
 
-### Taxa de chamadas
+### Call rate
 
-O thread do driver chama `popCommand(10)` e comenta execução aproximada a cada
-10 ms. Isso não constitui uma garantia de 100 comandos/s nem um limite seguro.
-O aplicativo usa 20 comandos não-zero/s por política própria.
+The driver thread calls `popCommand(10)` and comments that it runs roughly
+every 10 ms. This is neither a 100-calls-per-second guarantee nor a documented
+safe limit. The app uses its own policy of 20 non-zero calls per second.
 
-### Vários clientes
+### Multiple clients
 
-Os oito slots permitem vários clientes para PCM/trigger effects. O
-`HeadsetRumbleCommand` não contém slot e a função não verifica `g_slot`.
-Consequentemente, qualquer cliente pode sobrescrever o rumble global. Não há
-prioridade entre processos.
+The eight slots allow multiple clients for PCM/trigger effects.
+`HeadsetRumbleCommand` carries no slot, and the rumble function does not check
+`g_slot`. Any client can therefore overwrite global HMD rumble. There is no
+cross-process priority.
 
-### Headset presente e versão
+### Headset presence and version
 
-A C API não oferece export de presença do headset nem de versão. Driver ativo
-não prova, isoladamente, que o HMD está conectado e aceitando rumble. A UI
-mostra esse estado como indeterminado e pede teste manual.
+The C API exports neither headset presence nor an API version. An active driver
+alone does not prove that an HMD is connected and accepting rumble. The app
+shows headset presence as indeterminate and asks the user to perform a manual
+test.
 
-## Jailbreak e risco
+## Jailbreak and risk
 
-O README do Toolkit marca `Headset vibration*`; a nota do asterisco informa que
-certos recursos exigem jailbreak e podem causar dano ou brick. O aplicativo:
+The Toolkit README marks `Headset vibration*`; its footnote says certain
+features require a jailbreak and can cause damage or brick the headset. This
+app:
 
-- não faz jailbreak;
-- não oferece botão/script para isso;
-- não altera a instalação;
-- mostra o aviso antes do uso;
-- aponta o usuário aos guias oficiais.
+- does not perform a jailbreak;
+- does not provide a jailbreak button or script;
+- does not modify the Toolkit installation;
+- displays a warning before use;
+- directs the user to upstream documentation.
 
-## Fontes
+## Sources
 
 - [C API header](https://github.com/BnuuySolutions/PSVR2Toolkit/blob/9e24e6ef475660481e8b46366aaa3cb24d0b4fde/projects/psvr2_toolkit_capi/psvr2tk_capi.h)
 - [C API implementation](https://github.com/BnuuySolutions/PSVR2Toolkit/blob/9e24e6ef475660481e8b46366aaa3cb24d0b4fde/projects/psvr2_toolkit_capi/psvr2tk_capi.cpp)

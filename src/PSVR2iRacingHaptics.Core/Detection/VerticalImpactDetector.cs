@@ -64,7 +64,7 @@ public sealed class VerticalImpactDetector
         double threshold;
         string evidence;
 
-        if (landingEvidence && settings.LandingsEnabled)
+        if (landingEvidence)
         {
             kind = HapticEventKind.Landing;
             severity = score >= settings.SevereCompressionThreshold
@@ -72,40 +72,35 @@ public sealed class VerticalImpactDetector
                 : EventSeverity.Medium;
             priority = 70;
             threshold = settings.LandingThreshold;
-            evidence = $"confiança de voo={priorAirborneConfidence:F2}";
+            evidence = $"airborne confidence={priorAirborneConfidence:F2}";
         }
-        else if (rumbleEvidence && settings.StrongKerbsEnabled)
+        else if (rumbleEvidence)
         {
             kind = HapticEventKind.StrongKerb;
             severity = EventSeverity.Light;
             priority = 40;
             threshold = settings.StrongKerbThreshold;
             evidence =
-                $"rodas em rumble strip={telemetry.RumbleStripWheelCount}; "
-                + $"pitch máximo={telemetry.MaxRumblePitchHz:F1} Hz";
+                $"wheels on rumble strip={telemetry.RumbleStripWheelCount}; "
+                + $"maximum pitch={telemetry.MaxRumblePitchHz:F1} Hz";
         }
-        else if (settings.WheelDropsEnabled
-                 && telemetry.SuspensionVelocityAsymmetryMps >= 0.55)
+        else if (telemetry.SuspensionVelocityAsymmetryMps >= 0.55)
         {
             kind = HapticEventKind.WheelDrop;
             severity = EventSeverity.Medium;
             priority = 55;
             threshold = settings.StrongKerbThreshold * 0.9;
             evidence =
-                $"assimetria da suspensão={telemetry.SuspensionVelocityAsymmetryMps:F2} m/s";
+                $"suspension asymmetry={telemetry.SuspensionVelocityAsymmetryMps:F2} m/s";
         }
-        else if (settings.SevereCompressionEnabled)
+        else
         {
             kind = HapticEventKind.SevereVerticalCompression;
             severity = EventSeverity.Strong;
             priority = 65;
             threshold = settings.SevereCompressionThreshold;
             evidence =
-                $"pico da suspensão={telemetry.SuspensionVelocityPeakMps:F2} m/s";
-        }
-        else
-        {
-            return new DetectionResult(null, diagnostics);
+                $"suspension peak={telemetry.SuspensionVelocityPeakMps:F2} m/s";
         }
 
         if (kind == HapticEventKind.StrongKerb
@@ -122,8 +117,8 @@ public sealed class VerticalImpactDetector
         }
 
         var reason =
-            $"impulso vertical={telemetry.VerticalImpulseG:F2} g; "
-            + $"jerk vertical={telemetry.VerticalJerkGPerSec:F1} g/s; "
+            $"vertical impulse={telemetry.VerticalImpulseG:F2} g; "
+            + $"vertical jerk={telemetry.VerticalJerkGPerSec:F1} g/s; "
             + $"{evidence}; horizontal={telemetry.HorizontalImpulseG:F2} g";
 
         _lastEventAt = telemetry.Frame.Timestamp;

@@ -13,9 +13,9 @@ public sealed record AppRuntimeState
     public bool SimulatedRumble { get; init; }
     public bool SimulatedTelemetry { get; init; }
     public bool Recording { get; init; }
-    public string TelemetryStatus { get; init; } = "Não iniciado";
-    public string RumbleDeviceStatus { get; init; } = "Não iniciado";
-    public string LastEvent { get; init; } = "Nenhum";
+    public string TelemetryStatus { get; init; } = "Not started";
+    public string RumbleDeviceStatus { get; init; } = "Not started";
+    public string LastEvent { get; init; } = "None";
     public ProcessedTelemetry? Diagnostics { get; init; }
     public RumbleControllerStatus? Rumble { get; init; }
 }

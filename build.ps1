@@ -12,30 +12,30 @@ $solution = Join-Path $root "PSVR2iRacingHaptics.sln"
 $testProject = Join-Path $root "tests\PSVR2iRacingHaptics.Tests\PSVR2iRacingHaptics.Tests.csproj"
 $appProject = Join-Path $root "src\PSVR2iRacingHaptics.App\PSVR2iRacingHaptics.App.csproj"
 $publishDir = Join-Path $root "build\portable\PSVR2iRacingHaptics"
-$zipPath = Join-Path $root "build\PSVR2-iRacing-Haptics-v0.1.0-win-x64-portable.zip"
+$zipPath = Join-Path $root "build\PSVR2-iRacing-Haptics-v0.2.0-win-x64-portable.zip"
 $hashPath = "$zipPath.sha256"
 
 $sdkVersion = dotnet --version
 if (-not $sdkVersion.StartsWith("8.")) {
-    throw "É necessário o SDK .NET 8. Versão encontrada: $sdkVersion"
+    throw ".NET 8 SDK is required. Found version: $sdkVersion"
 }
 
-Write-Host "Restaurando..."
+Write-Host "Restoring..."
 dotnet restore $solution --disable-parallel -m:1
 
 $selfContained = -not $FrameworkDependent
 if ($selfContained) {
-    Write-Host "Restaurando runtime pack de $Runtime..."
+    Write-Host "Restoring the $Runtime runtime pack..."
     dotnet restore $appProject -r $Runtime --disable-parallel -m:1
 }
 
-Write-Host "Compilando..."
+Write-Host "Building..."
 dotnet build $solution -c $Configuration --no-restore -m:1
 
-Write-Host "Executando testes..."
+Write-Host "Running tests..."
 dotnet run --project $testProject -c $Configuration --no-build
 if ($LASTEXITCODE -ne 0) {
-    throw "Os testes falharam."
+    throw "Tests failed."
 }
 
 if (Test-Path $publishDir) {
@@ -43,7 +43,7 @@ if (Test-Path $publishDir) {
 }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
-Write-Host "Publicando para $Runtime (self-contained=$selfContained)..."
+Write-Host "Publishing for $Runtime (self-contained=$selfContained)..."
 dotnet publish $appProject `
     -c $Configuration `
     -r $Runtime `
@@ -72,5 +72,5 @@ $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLowerInvariant()
 "$hash  $(Split-Path -Leaf $zipPath)" | Set-Content -Path $hashPath -Encoding ascii
 
 Write-Host ""
-Write-Host "Pacote criado: $zipPath"
+Write-Host "Package created: $zipPath"
 Write-Host "SHA-256: $hash"

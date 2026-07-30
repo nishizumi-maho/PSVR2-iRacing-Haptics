@@ -29,9 +29,9 @@ public sealed class RotatingFileLogger : IAppLogger, IDisposable
     public event EventHandler<string>? LineWritten;
 
     public void Info(string message) => Write("INFO", message, null);
-    public void Warning(string message) => Write("AVISO", message, null);
+    public void Warning(string message) => Write("WARN", message, null);
     public void Error(string message, Exception? exception = null) =>
-        Write("ERRO", message, exception);
+        Write("ERROR", message, exception);
 
     private void Write(string level, string message, Exception? exception)
     {
@@ -56,7 +56,7 @@ public sealed class RotatingFileLogger : IAppLogger, IDisposable
             }
             catch
             {
-                // Falha de log nunca deve encerrar a aplicação.
+                // A logging failure must never terminate the application.
             }
         }
 

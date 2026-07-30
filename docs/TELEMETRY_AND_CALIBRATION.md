@@ -1,92 +1,127 @@
-# Telemetria e calibração
+# Telemetry and calibration
 
-## Layout lido
+## IRSDK layout
 
-A implementação segue o layout dinâmico do IRSDK:
+The reader follows the dynamic IRSDK layout:
 
-- header versão 2;
-- até quatro `varBuf`;
-- `varHeader` de 144 bytes;
-- tipos char, bool, int, bitfield, float e double;
-- seleção do buffer com maior `tickCount`;
-- cópia integral da linha e verificação de que o tick não mudou.
+- header version 2;
+- up to four `varBuf` entries;
+- 144-byte `varHeader`;
+- char, bool, int, bitfield, float and double types;
+- selection of the buffer with the greatest `tickCount`;
+- complete row copy followed by verification that the tick did not change.
 
-Não há offsets fixos para `LatAccel` ou qualquer outra variável. A lista é
-reconstruída ao conectar.
+There are no fixed offsets for `LatAccel` or any other variable. The variable
+index is rebuilt whenever the client connects.
 
-## Variáveis e tipos
+## Variables and types
 
-| Variável | Tipo | Uso |
+| Variable | Type | Use |
 | --- | --- | --- |
-| `IsOnTrack` | bool | jogador dentro do carro e física ativa |
-| `IsOnTrackCar` | bool | carro do jogador com física ativa |
-| `IsInGarage` | bool | rejeitar carregamento/garagem |
-| `IsReplayPlaying` | bool | impedir efeito involuntário em replay do sim |
-| `Speed` | float, m/s | mínimo e queda de velocidade |
-| `LatAccel` | float, m/s² | impulso lateral |
-| `LongAccel` | float, m/s² | impacto longitudinal/frenagem |
-| `VertAccel` | float, m/s² | impacto vertical; inclui gravidade |
-| `VelocityX/Y/Z` | float, m/s | movimento e evidência de voo |
-| `Yaw/Pitch/Roll` | float, rad | orientação/capotamento |
-| `YawRate/PitchRate/RollRate` | float, rad/s | rotação rápida |
-| `Brake`, `Throttle` | float, 0–1 | rejeição de frenagem normal |
-| `PlayerCarMyIncidentCount` | int | evidência auxiliar |
-| `PlayerTrackSurfaceMaterial` | int | materiais rumble quando presentes |
-| `LF/RF/LR/RRspeed` | float, m/s | bloqueio de rodas |
-| `LF/RF/LR/RRshockVel` | float, m/s | compressão e assimetria |
-| `LF/RF/LR/RRshockDefl` | float, m | extensão/compressão, quando disponível |
-| `TireLF/RF/LR/RR_RumblePitch` | float, Hz | presença de rumble strip |
+| `IsOnTrack` | bool | driver in the car with active physics |
+| `IsOnTrackCar` | bool | player's car has active physics |
+| `IsInGarage` | bool | reject loading/garage data |
+| `IsReplayPlaying` | bool | prevent unintended effects during iRacing replay |
+| `Speed` | float, m/s | minimum speed and speed loss |
+| `LatAccel` | float, m/s² | lateral impulse |
+| `LongAccel` | float, m/s² | longitudinal impact/braking |
+| `VertAccel` | float, m/s² | vertical impact; includes gravity |
+| `VelocityX/Y/Z` | float, m/s | movement and airborne evidence |
+| `Yaw/Pitch/Roll` | float, rad | orientation/rollover |
+| `YawRate/PitchRate/RollRate` | float, rad/s | rapid rotation |
+| `Brake`, `Throttle` | float, 0–1 | reject normal braking |
+| `PlayerCarMyIncidentCount` | int | supporting evidence |
+| `PlayerTrackSurfaceMaterial` | int | rumble material when available |
+| `LF/RF/LR/RRspeed` | float, m/s | wheel-lock evidence |
+| `LF/RF/LR/RRshockVel` | float, m/s | compression and asymmetry |
+| `LF/RF/LR/RRshockDefl` | float, m | extension/compression when available |
+| `TireLF/RF/LR/RR_RumblePitch` | float, Hz | rumble-strip presence |
 
-Ride height de roda aparece como telemetria dependente e historicamente não é
-garantida ao vivo; contato binário de roda não existe. Nenhum deles é requisito.
+Per-wheel ride height is dependent telemetry and has historically not been
+guaranteed live. Binary wheel contact is not available. Neither signal is
+required.
 
 ## Scores
 
-O score de colisão combina:
+The collision score combines:
 
-- módulo do desvio lateral/longitudinal em g;
-- jerk horizontal;
-- desaceleração;
-- velocidade angular;
-- bônus pequeno por aumento de incidentes.
+- magnitude of lateral/longitudinal baseline deviation in g;
+- horizontal jerk;
+- deceleration;
+- angular velocity;
+- a small bonus when incident count increases.
 
-Frenagem com pedal/bloqueio e sua transição imediata são suprimidas sem
-incidente ou rotação compatível.
+Braking with pedal/wheel-lock evidence and its immediate transition are
+suppressed unless compatible incident or rotation evidence exists.
 
-O score vertical combina:
+The vertical score combines:
 
-- desvio vertical em g;
-- jerk vertical;
-- pico da velocidade de suspensão;
-- velocidade angular.
+- vertical deviation in g;
+- vertical jerk;
+- peak suspension velocity;
+- angular velocity.
 
-A classificação usa evidência adicional:
+Classification also uses:
 
-- rumble pitch/material para zebra;
-- assimetria de suspensão para queda de roda;
-- período anterior de baixa aceleração/velocidade vertical para pouso;
-- pico simétrico alto para compressão severa.
+- rumble pitch/material for kerbs;
+- suspension asymmetry for wheel drops;
+- a preceding low-acceleration/vertical-motion period for landings;
+- a high symmetric suspension peak for severe compression.
+
+## Event output policy
+
+Detectors always continue to produce diagnostics. `HapticEventPolicy` applies
+the user's per-event switches only before effect mapping. Consequently:
+
+- a disabled category cannot send rumble;
+- the event remains visible under Diagnostics;
+- recording and marker comparison remain useful;
+- changing a profile does not overwrite the user's category choices.
+
+Light kerbs are a special case: enabling them also lowers the kerb detector's
+threshold. They remain off by default to prevent continuous track-surface
+rumble.
 
 ## JSONL
 
-Tipos de linha:
+Entry types:
 
-- `frame`: `TelemetryFrame` e resultado original;
-- `marker`: frame corrente e texto da marcação.
+- `frame`: `TelemetryFrame` plus the original detection result;
+- `marker`: current frame plus marker text.
 
-O replay reexecuta os detectores atuais. A comparação procura categoria
-compatível em uma janela de 500 ms, mostrando marcações perdidas e eventos não
-marcados.
+Replay runs the current detectors again. Marker comparison looks for a
+compatible category in a 500 ms window and reports missed markers and unmarked
+detections.
 
-## Processo recomendado
+## Recommended calibration process
 
-1. Use perfil Padrão.
-2. Grave cinco voltas limpas, incluindo zebras usuais.
-3. Confirme que zebras leves ficam sem evento.
-4. Grave impactos controlados em sessão de teste.
-5. Marque imediatamente cada evento.
-6. Ajuste primeiro os limiares, depois as frequências.
-7. Teste carros de suspensão muito diferentes separadamente.
+1. Enable only the desired categories under **Effects**.
+2. Use **Manual test** to calibrate physical comfort before telemetry.
+3. Apply the **Default** profile.
+4. Record two or three clean laps, including ordinary kerbs.
+5. Confirm that normal driving remains quiet.
+6. Record controlled events in a test session and mark each immediately.
+7. Compare markers with current settings.
+8. Lower only the relevant threshold by 0.10–0.20 for a missed event.
+9. Raise only the relevant threshold by 0.10–0.20 for a false positive.
+10. Change one value at a time and replay the same recording.
+11. Adjust frequency/duration only after detection is reliable.
 
-Os valores iniciais são hipóteses funcionais verificadas por simulação, não
-calibração universal para todos os carros.
+Interpretation:
+
+- `Matched`: compatible detection within 500 ms of the marker;
+- `Missed`: marker without compatible detection;
+- `Unmarked detection`: detection without a marker.
+
+Collision threshold tuning should be guided by `Collision score`; vertical
+threshold tuning should be guided by `Vertical score`. Sensitivity multiplies
+an entire detector and should be changed only when all thresholds for that
+detector need to move together. Cooldown changes repetition timing, not event
+strength.
+
+Initial values are functional hypotheses verified by simulation, not universal
+calibration for every car.
+
+The telemetry simulator passes through the same pipeline, event switches and
+effect mapping as iRacing. Select the real Toolkit device for a physical
+scenario test; the simulated rumble device only records expected commands.

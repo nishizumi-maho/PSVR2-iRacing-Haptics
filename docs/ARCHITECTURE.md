@@ -1,65 +1,73 @@
-# Arquitetura
+# Architecture
 
-## Camadas
+## Layers
 
 ### Core
 
-- `TelemetrySignalProcessor`: EMA rápida/lenta, diferenças, jerk e contexto;
-- `ImpactDetector`: colisões, direção, severidade, capotamento;
-- `VerticalImpactDetector`: zebra, queda, pouso e compressão;
-- `HapticDetectionPipeline`: executa os dois detectores e escolhe prioridade;
-- `RumbleEffectMapper`: evento para pulsos;
-- `RumbleController`: serialização, preempção, cancelamento, limites e OFF;
+- `TelemetrySignalProcessor`: fast/slow EMA, deltas, jerk and context;
+- `ImpactDetector`: collisions, direction, severity and rollover;
+- `VerticalImpactDetector`: kerbs, wheel drops, landings and compression;
+- `HapticDetectionPipeline`: runs both detectors and selects by priority;
+- `HapticEventPolicy`: decides whether a detected category may produce rumble;
+- `RumbleEffectMapper`: converts events into pulse patterns;
+- `RumbleController`: serialization, preemption, cancellation, limits and OFF;
 - `SettingsService`, `ProfileCatalog`, `RotatingFileLogger`;
 - `TelemetryRecorder`, `TelemetryReplayClient`, `CalibrationAnalyzer`;
-- `TelemetrySimulator` e `SimulatedRumbleDevice`.
+- `TelemetrySimulator` and `SimulatedRumbleDevice`.
 
 ### Infrastructure
 
-- `Psvr2ToolkitClient`: descoberta/carregamento/exports/estado/chamadas;
-- `IRacingSharedMemoryClient`: memória compartilhada, reconexão e normalização.
+- `Psvr2ToolkitClient`: discovery, DLL loading, exports, state and native calls;
+- `IRacingSharedMemoryClient`: shared memory, reconnection and normalization.
 
 ### App
 
-- `AppCoordinator`: ciclo de vida e integração sem lógica de detector na UI;
-- `MainForm`: interface WinForms PT-BR.
+- `AppCoordinator`: application lifecycle and integration, with no detector
+  logic in the UI;
+- `MainForm`: English WinForms interface.
 
-## Fluxo
+## Data flow
 
 ```mermaid
 flowchart TD
-    A["iRacing ou simulador"] --> B["Snapshot normalizado"]
-    B --> C["Filtro e jerk"]
-    C --> D["Detector de colisão"]
-    C --> E["Detector vertical"]
-    D --> F["Prioridade do evento"]
+    A["iRacing or simulator"] --> B["Normalized snapshot"]
+    B --> C["Filtering and jerk"]
+    C --> D["Collision detector"]
+    C --> E["Vertical detector"]
+    D --> F["Event priority"]
     E --> F
-    F --> G["Mapa de efeito"]
-    G --> H["Controlador seguro"]
-    H --> I["C API real ou dispositivo falso"]
+    F --> G{"Category enabled?"}
+    G -->|"Yes"| H["Effect mapping"]
+    G -->|"No"| I["Diagnostics and recording only"]
+    H --> J["Safe controller"]
+    J --> K["Real C API or fake device"]
 ```
 
-## Falhas e OFF
+Category switches are deliberately applied after detection. This allows the
+Diagnostics tab and JSONL calibration to observe an event without sending
+rumble to the headset.
+
+## Failure and OFF flow
 
 ```mermaid
 flowchart TD
-    A["Efeito ativo"] --> B{"Evento"}
-    B -->|"Fim normal"| C["Enviar 0 Hz"]
-    B -->|"Cancelamento ou prioridade maior"| C
-    B -->|"Saiu do carro ou perdeu iRacing"| C
-    B -->|"Driver inativo ou exceção"| C
-    B -->|"Fechamento ou emergência"| C
-    C --> D["Registrar resultado"]
+    A["Active effect"] --> B{"Event"}
+    B -->|"Normal completion"| C["Send 0 Hz"]
+    B -->|"Cancellation or higher priority"| C
+    B -->|"Driver exits car or iRacing is lost"| C
+    B -->|"Inactive Toolkit driver or exception"| C
+    B -->|"Shutdown or emergency stop"| C
+    C --> D["Log result"]
 ```
 
-Um timeout nativo é especial: o thread gerenciado não pode encerrar com
-segurança uma função C que travou. Nesse caso o cliente bloqueia novos comandos
-e mantém a DLL carregada até o processo terminar, evitando descarregá-la sob
-uma função potencialmente ativa.
+A native timeout is special: managed code cannot safely terminate a C function
+that is stuck. After a timeout, the client blocks new commands and keeps the
+DLL loaded until process exit instead of unloading it beneath a potentially
+active native function.
 
-## Extensões futuras
+## Future extensions
 
-`AppSettings` separa perfil, detectores, efeitos e segurança. A próxima versão
-pode associar um perfil a metadados de sessão/car/pista sem alterar detectores
-ou controlador. Novos dispositivos implementam `IHmdRumbleDevice`; novas
-fontes implementam `ITelemetryClient`.
+`AppSettings` separates profiles, detectors, event output, effects and safety.
+A future version can associate a profile with session/car/track metadata
+without changing the detectors or controller. New rumble devices implement
+`IHmdRumbleDevice`; new telemetry sources implement `ITelemetryClient`.

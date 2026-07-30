@@ -1,4 +1,4 @@
 # Build
 
-`build.ps1` coloca a publicação autocontida em `build/portable` e o ZIP final
-diretamente nesta pasta. Binários gerados não são versionados.
+`build.ps1` places the self-contained publication under `build/portable` and
+the final ZIP directly in this folder. Generated binaries are not versioned.

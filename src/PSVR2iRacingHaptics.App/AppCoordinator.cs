@@ -95,8 +95,8 @@ public sealed class AppCoordinator : IAsyncDisposable
 
         _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _logger.Info(
-            $"PSVR2 iRacing Haptics v{Application.ProductVersion} iniciado; "
-            + $"modo de dados={(_paths.IsPortable ? "portátil" : "LocalAppData")}.");
+            $"PSVR2 iRacing Haptics v{Application.ProductVersion} started; "
+            + $"data mode={(_paths.IsPortable ? "portable" : "LocalAppData")}.");
 
         await _toolkit.InitializeAsync(_lifetime.Token).ConfigureAwait(false);
         await ActivateTelemetryAsync(_iracing, simulated: false, _lifetime.Token)
@@ -126,9 +126,21 @@ public sealed class AppCoordinator : IAsyncDisposable
         string profile,
         CancellationToken cancellationToken = default)
     {
+        var current = Settings;
         var settings = ProfileCatalog.Create(profile);
-        settings.UseSimulatedRumbleDevice = Settings.UseSimulatedRumbleDevice;
-        settings.HapticsEnabled = Settings.HapticsEnabled;
+        settings.UseSimulatedRumbleDevice = current.UseSimulatedRumbleDevice;
+        settings.HapticsEnabled = current.HapticsEnabled;
+        settings.Impacts.Enabled = current.Impacts.Enabled;
+        settings.Impacts.LightEnabled = current.Impacts.LightEnabled;
+        settings.Impacts.MediumEnabled = current.Impacts.MediumEnabled;
+        settings.Impacts.StrongEnabled = current.Impacts.StrongEnabled;
+        settings.Impacts.RolloverEnabled = current.Impacts.RolloverEnabled;
+        settings.Vertical.StrongKerbsEnabled = current.Vertical.StrongKerbsEnabled;
+        settings.Vertical.LightKerbsEnabled = current.Vertical.LightKerbsEnabled;
+        settings.Vertical.LandingsEnabled = current.Vertical.LandingsEnabled;
+        settings.Vertical.WheelDropsEnabled = current.Vertical.WheelDropsEnabled;
+        settings.Vertical.SevereCompressionEnabled =
+            current.Vertical.SevereCompressionEnabled;
         await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
     }
 
@@ -138,7 +150,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     {
         var settings = Settings;
         settings.UseSimulatedRumbleDevice = simulated;
-        settings.ActiveProfile = "Personalizado";
+        settings.ActiveProfile = "Custom";
         await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
     }
 
@@ -158,7 +170,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     }
 
     public Task EmergencyStopAsync(
-        string reason = "botão de emergência",
+        string reason = "emergency stop button",
         CancellationToken cancellationToken = default) =>
         _rumbleController.EmergencyStopAsync(reason, cancellationToken);
 
@@ -189,7 +201,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     {
         path ??= Path.Combine(
             _paths.RecordingsDirectory,
-            $"telemetria-{DateTime.Now:yyyyMMdd-HHmmss}.jsonl");
+            $"telemetry-{DateTime.Now:yyyyMMdd-HHmmss}.jsonl");
         await _recorder.StartAsync(path, cancellationToken).ConfigureAwait(false);
         UpdateState(state => state with { Recording = true });
     }
@@ -252,7 +264,7 @@ public sealed class AppCoordinator : IAsyncDisposable
 
         _pipeline.Reset();
         await _rumbleController.EmergencyStopAsync(
-            "troca da fonte de telemetria",
+            "telemetry source changed",
             cancellationToken).ConfigureAwait(false);
         _activeTelemetry = client;
         HookTelemetry(client);
@@ -275,8 +287,8 @@ public sealed class AppCoordinator : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error("Falha no pipeline de detecção.", ex);
-            _ = _rumbleController.EmergencyStopAsync("exceção no detector");
+            _logger.Error("Detection pipeline failed.", ex);
+            _ = _rumbleController.EmergencyStopAsync("detector exception");
             return;
         }
 
@@ -288,21 +300,30 @@ public sealed class AppCoordinator : IAsyncDisposable
         if (!frame.IsConnected || !frame.IsDriverInCar)
         {
             _ = _rumbleController.EmergencyStopAsync(
-                !frame.IsConnected ? "perda do iRacing" : "piloto fora do carro");
+                !frame.IsConnected ? "iRacing connection lost" : "driver out of car");
         }
 
         if (result.SelectedEvent is not null)
         {
             var detected = result.SelectedEvent;
             _logger.Info(
-                $"Evento={detected.Kind}; severidade={detected.Severity}; "
+                $"Event={detected.Kind}; severity={detected.Severity}; "
                 + $"score={detected.Score:F2}; {detected.Reason}");
             EventDetected?.Invoke(this, detected);
             var settings = Settings;
-            if (settings.HapticsEnabled)
+            var eventEnabled = HapticEventPolicy.IsEnabled(detected.Kind, settings);
+            if (settings.HapticsEnabled && eventEnabled)
             {
                 var effect = _effectMapper.Map(detected, settings.Effects);
                 _ = _rumbleController.TryPlayAsync(effect);
+            }
+            else
+            {
+                _logger.Info(
+                    $"Haptic output suppressed for {detected.Kind}: "
+                    + (settings.HapticsEnabled
+                        ? "this event category is disabled."
+                        : "all haptics are disabled."));
             }
         }
 
@@ -315,11 +336,11 @@ public sealed class AppCoordinator : IAsyncDisposable
             {
                 IRacingConnected = frame.IsConnected,
                 DriverInCar = frame.IsDriverInCar,
-                TelemetryStatus = _activeTelemetry?.StatusDescription ?? "Desconectado",
+                TelemetryStatus = _activeTelemetry?.StatusDescription ?? "Disconnected",
                 Diagnostics = result.Diagnostics,
                 LastEvent = result.SelectedEvent is null
                     ? state.LastEvent
-                    : $"{result.SelectedEvent.Kind} ({result.SelectedEvent.Score:F2})"
+                    : FormatLastEvent(result.SelectedEvent, Settings)
             });
         }
     }
@@ -328,13 +349,13 @@ public sealed class AppCoordinator : IAsyncDisposable
     {
         if (!connected)
         {
-            _ = _rumbleController.EmergencyStopAsync("fonte de telemetria desconectada");
+            _ = _rumbleController.EmergencyStopAsync("telemetry source disconnected");
         }
         UpdateState(state => state with
         {
             IRacingConnected = connected,
             DriverInCar = connected && state.DriverInCar,
-            TelemetryStatus = _activeTelemetry?.StatusDescription ?? "Desconectado"
+            TelemetryStatus = _activeTelemetry?.StatusDescription ?? "Disconnected"
         });
     }
 
@@ -349,7 +370,7 @@ public sealed class AppCoordinator : IAsyncDisposable
                 if (!status.DriverActive && !Settings.UseSimulatedRumbleDevice)
                 {
                     await _rumbleController.EmergencyStopAsync(
-                        "driver do Toolkit inativo",
+                        "Toolkit driver inactive",
                         cancellationToken).ConfigureAwait(false);
                 }
                 await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
@@ -363,7 +384,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     private async Task RecreateRumbleControllerAsync(CancellationToken cancellationToken)
     {
         var previous = _rumbleController;
-        await previous.EmergencyStopAsync("reconfiguração", cancellationToken)
+        await previous.EmergencyStopAsync("settings changed", cancellationToken)
             .ConfigureAwait(false);
         await previous.DisposeAsync().ConfigureAwait(false);
         _rumbleController = CreateRumbleController(Settings);
@@ -460,7 +481,7 @@ public sealed class AppCoordinator : IAsyncDisposable
 
         var lifetime = Interlocked.Exchange(ref _lifetime, null);
         lifetime?.Cancel();
-        await _rumbleController.EmergencyStopAsync("encerramento do aplicativo")
+        await _rumbleController.EmergencyStopAsync("application shutdown")
             .ConfigureAwait(false);
 
         if (_activeTelemetry is not null)
@@ -488,6 +509,16 @@ public sealed class AppCoordinator : IAsyncDisposable
         }
         lifetime?.Dispose();
         _logger.LineWritten -= OnLogLine;
-        _logger.Info("Aplicativo encerrado com comando Rumble OFF solicitado.");
+        _logger.Info("Application closed after requesting Rumble OFF.");
+    }
+
+    private static string FormatLastEvent(
+        DetectedHapticEvent detected,
+        AppSettings settings)
+    {
+        var outputEnabled = settings.HapticsEnabled
+            && HapticEventPolicy.IsEnabled(detected.Kind, settings);
+        return $"{detected.Kind} ({detected.Score:F2})"
+            + (outputEnabled ? "" : " — haptic output disabled");
     }
 }

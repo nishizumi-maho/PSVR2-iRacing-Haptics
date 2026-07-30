@@ -14,10 +14,15 @@ public sealed class MainForm : Form
     private readonly ComboBox _profileCombo = new();
     private readonly ComboBox _rumbleModeCombo = new();
     private readonly NumericUpDown _manualFrequency = Number(0, 25, 18);
-    private readonly NumericUpDown _manualDuration = Number(20, 1000, 80);
+    private readonly NumericUpDown _manualDuration = Number(20, 1000, 150);
     private readonly NumericUpDown _manualPulses = Number(1, 8, 1);
     private readonly NumericUpDown _manualGap = Number(0, 1000, 30);
-    private readonly CheckBox _impactEnabled = Check("Ativar batidas");
+    private readonly CheckBox _hapticsEnabled = Check("Enable all haptic output");
+    private readonly CheckBox _impactEnabled = Check("Enable collision haptics");
+    private readonly CheckBox _lightImpactsEnabled = Check("Light impacts");
+    private readonly CheckBox _mediumImpactsEnabled = Check("Medium impacts");
+    private readonly CheckBox _strongImpactsEnabled = Check("Strong impacts");
+    private readonly CheckBox _rolloverImpactsEnabled = Check("Rollover impacts");
     private readonly NumericUpDown _impactSensitivity = Number(0.2m, 3, 1, 0.05m, 2);
     private readonly NumericUpDown _impactLight = Number(0.2m, 20, 1.45m, 0.05m, 2);
     private readonly NumericUpDown _impactMedium = Number(0.25m, 25, 2.85m, 0.05m, 2);
@@ -25,29 +30,32 @@ public sealed class MainForm : Form
     private readonly NumericUpDown _impactCooldown = Number(50, 5000, 260, 10);
     private readonly NumericUpDown _impactMinSpeed = Number(0, 100, 2.5m, 0.5m, 1);
     private readonly NumericUpDown _lightFreq = Number(0, 25, 12);
-    private readonly NumericUpDown _lightDuration = Number(10, 1000, 75, 5);
+    private readonly NumericUpDown _lightDuration = Number(10, 1000, 120, 5);
     private readonly NumericUpDown _mediumFreq = Number(0, 25, 18);
-    private readonly NumericUpDown _mediumDuration = Number(10, 1000, 125, 5);
+    private readonly NumericUpDown _mediumDuration = Number(10, 1000, 160, 5);
     private readonly NumericUpDown _strongFreq = Number(0, 25, 24);
-    private readonly NumericUpDown _strongDuration = Number(10, 1000, 145, 5);
-    private readonly CheckBox _strongKerbsEnabled = Check("Ativar zebras fortes");
-    private readonly CheckBox _lightKerbsEnabled = Check("Permitir zebras leves (desativado por padrão)");
-    private readonly CheckBox _landingsEnabled = Check("Ativar pousos");
-    private readonly CheckBox _wheelDropsEnabled = Check("Ativar quedas de roda");
-    private readonly CheckBox _compressionEnabled = Check("Ativar compressões severas");
+    private readonly NumericUpDown _strongDuration = Number(10, 1000, 200, 5);
+    private readonly CheckBox _strongKerbsEnabled = Check("Strong kerbs");
+    private readonly CheckBox _lightKerbsEnabled =
+        Check("Light kerbs (off by default)");
+    private readonly CheckBox _landingsEnabled = Check("Car landings");
+    private readonly CheckBox _wheelDropsEnabled = Check("Wheel drops");
+    private readonly CheckBox _compressionEnabled = Check("Severe vertical compression");
     private readonly NumericUpDown _verticalSensitivity = Number(0.2m, 3, 1, 0.05m, 2);
     private readonly NumericUpDown _kerbThreshold = Number(0.2m, 30, 2.05m, 0.05m, 2);
     private readonly NumericUpDown _landingThreshold = Number(0.2m, 30, 2.25m, 0.05m, 2);
     private readonly NumericUpDown _compressionThreshold = Number(0.2m, 40, 3.25m, 0.05m, 2);
     private readonly NumericUpDown _verticalCooldown = Number(50, 5000, 360, 10);
-    private readonly NumericUpDown _kerbFreq = Number(0, 25, 13);
-    private readonly NumericUpDown _kerbDuration = Number(10, 1000, 60, 5);
-    private readonly NumericUpDown _landingFreq = Number(0, 25, 18);
-    private readonly NumericUpDown _landingDuration = Number(10, 1000, 60, 5);
-    private readonly CheckBox _landingDoublePulse = Check("Segundo pulso no pouso");
-    private readonly NumericUpDown _landingGap = Number(0, 1000, 30, 5);
+    private readonly NumericUpDown _kerbFreq = Number(0, 25, 14);
+    private readonly NumericUpDown _kerbDuration = Number(10, 1000, 110, 5);
+    private readonly NumericUpDown _landingFreq = Number(0, 25, 19);
+    private readonly NumericUpDown _landingDuration = Number(10, 1000, 140, 5);
+    private readonly CheckBox _landingDoublePulse = Check("Use a second landing pulse");
+    private readonly NumericUpDown _landingGap = Number(0, 1000, 60, 5);
+    private readonly NumericUpDown _landingTailFrequency = Number(0, 25, 15);
+    private readonly NumericUpDown _landingTailDuration = Number(10, 1000, 110, 5);
     private readonly ComboBox _scenarioCombo = new();
-    private readonly CheckBox _telemetrySimulatorCheck = Check("Usar telemetria simulada");
+    private readonly CheckBox _telemetrySimulatorCheck = Check("Use simulated telemetry");
     private readonly Label _recordingPath = new();
     private bool _allowClose;
     private bool _started;
@@ -86,12 +94,13 @@ public sealed class MainForm : Form
         root.Controls.Add(BuildHeader(), 0, 0);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
-        tabs.TabPages.Add(Tab("Estado", BuildStateTab()));
-        tabs.TabPages.Add(Tab("Teste manual", BuildManualTab()));
-        tabs.TabPages.Add(Tab("Batidas", BuildImpactTab()));
-        tabs.TabPages.Add(Tab("Zebras e pousos", BuildVerticalTab()));
-        tabs.TabPages.Add(Tab("Diagnóstico", BuildDiagnosticsTab()));
-        tabs.TabPages.Add(Tab("Calibração e simulador", BuildCalibrationTab()));
+        tabs.TabPages.Add(Tab("Status", BuildStateTab()));
+        tabs.TabPages.Add(Tab("Effects", BuildEffectsTab()));
+        tabs.TabPages.Add(Tab("Manual test", BuildManualTab()));
+        tabs.TabPages.Add(Tab("Collision tuning", BuildImpactTab()));
+        tabs.TabPages.Add(Tab("Vertical tuning", BuildVerticalTab()));
+        tabs.TabPages.Add(Tab("Diagnostics", BuildDiagnosticsTab()));
+        tabs.TabPages.Add(Tab("Calibration & simulator", BuildCalibrationTab()));
         tabs.TabPages.Add(Tab("Logs", BuildLogsTab()));
         root.Controls.Add(tabs, 0, 1);
         root.Controls.Add(BuildFooter(), 0, 2);
@@ -117,13 +126,14 @@ public sealed class MainForm : Form
             AutoSize = true,
             MaximumSize = new Size(860, 0),
             Text =
-                "A vibração do headset exige o PSVR2 Toolkit ativo e, na versão analisada, "
-                + "é um recurso que requer jailbreak. O jailbreak não é executado por este "
-                + "aplicativo e pode danificar o headset. Use por sua conta e risco.",
+                "Headset rumble requires an active PSVR2 Toolkit and, in the version "
+                + "reviewed, requires a jailbroken headset. This app does not perform "
+                + "the jailbreak. The procedure can damage the headset; use it at your "
+                + "own risk.",
             ForeColor = Color.FromArgb(108, 69, 0),
             Font = new Font(Font, FontStyle.Bold)
         };
-        var stop = Button("PARAR VIBRAÇÃO AGORA", Color.FromArgb(177, 32, 37));
+        var stop = Button("STOP ALL RUMBLE NOW", Color.FromArgb(177, 32, 37));
         stop.Font = new Font(Font, FontStyle.Bold);
         stop.Padding = new Padding(8);
         stop.Click += async (_, _) => await SafeUiAction(
@@ -139,19 +149,19 @@ public sealed class MainForm : Form
         var grid = SettingsGrid();
         foreach (var (key, title) in new[]
         {
-            ("toolkit", "PSVR2 Toolkit encontrado"),
-            ("dll", "DLL carregada"),
-            ("api", "API inicializada"),
-            ("driver", "Driver ativo"),
-            ("headset", "Headset disponível"),
-            ("iracing", "iRacing conectado"),
-            ("incar", "Usuário no carro"),
-            ("haptics", "Haptics habilitado"),
-            ("rumble", "Dispositivo de vibração"),
-            ("telemetry", "Fonte de telemetria")
+            ("toolkit", "PSVR2 Toolkit found"),
+            ("dll", "C API DLL loaded"),
+            ("api", "C API initialized"),
+            ("driver", "Toolkit driver active"),
+            ("headset", "Headset available"),
+            ("iracing", "iRacing connected"),
+            ("incar", "Driver in car"),
+            ("haptics", "Haptics enabled"),
+            ("rumble", "Rumble device"),
+            ("telemetry", "Telemetry source")
         })
         {
-            var value = StatusLabel("Aguardando");
+            var value = StatusLabel("Waiting");
             _stateValues[key] = value;
             AddRow(grid, title, value);
         }
@@ -163,20 +173,50 @@ public sealed class MainForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             Margin = new Padding(0, 14, 0, 0)
         };
-        var refresh = Button("Verificar novamente");
+        var refresh = Button("Check again");
         refresh.Click += async (_, _) => await SafeUiAction(
             async () =>
             {
                 await _coordinator.SetSimulatedRumbleAsync(
                     _coordinator.Settings.UseSimulatedRumbleDevice);
             });
-        var openData = Button("Abrir pasta de dados");
+        var openData = Button("Open data folder");
         openData.Click += (_, _) => OpenDirectory(_coordinator.DataDirectory);
         buttons.Controls.Add(refresh);
         buttons.Controls.Add(openData);
         panel.Controls.Add(buttons);
         panel.Controls.Add(grid);
-        panel.Controls.Add(SectionTitle("Estado das conexões"));
+        panel.Controls.Add(SectionTitle("Connection status"));
+        return panel;
+    }
+
+    private Control BuildEffectsTab()
+    {
+        var panel = ContentPanel();
+        var grid = SettingsGrid();
+        AddRow(grid, "Master switch", _hapticsEnabled);
+        AddRow(grid, "All collisions", _impactEnabled);
+        AddRow(grid, "Collision severity", InlineChecks(
+            _lightImpactsEnabled,
+            _mediumImpactsEnabled,
+            _strongImpactsEnabled,
+            _rolloverImpactsEnabled));
+        AddRow(grid, "Kerb effects", InlineChecks(
+            _strongKerbsEnabled,
+            _lightKerbsEnabled));
+        AddRow(grid, "Vertical effects", InlineChecks(
+            _landingsEnabled,
+            _wheelDropsEnabled,
+            _compressionEnabled));
+
+        panel.Controls.Add(SaveButton());
+        panel.Controls.Add(grid);
+        panel.Controls.Add(Info(
+            "Turn off any event category you do not want to feel. Detection and "
+            + "diagnostic logging continue while an effect is disabled, so you can "
+            + "calibrate safely without sending rumble. Light kerbs also use a lower "
+            + "detection threshold and remain off by default."));
+        panel.Controls.Add(SectionTitle("Choose which events produce rumble"));
         return panel;
     }
 
@@ -187,20 +227,20 @@ public sealed class MainForm : Form
         _rumbleModeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
         _rumbleModeCombo.Items.AddRange(new object[]
         {
-            "PSVR2 Toolkit (hardware real)",
-            "Dispositivo simulado"
+            "PSVR2 Toolkit (real hardware)",
+            "Simulated rumble device"
         });
-        AddRow(grid, "Dispositivo", _rumbleModeCombo);
-        AddRow(grid, "Frequência (0–25 Hz)", _manualFrequency);
-        AddRow(grid, "Duração do pulso (ms)", _manualDuration);
-        AddRow(grid, "Quantidade de pulsos", _manualPulses);
-        AddRow(grid, "Intervalo (ms)", _manualGap);
+        AddRow(grid, "Device", _rumbleModeCombo);
+        AddRow(grid, "Frequency (0–25 Hz)", _manualFrequency);
+        AddRow(grid, "Pulse duration (ms)", _manualDuration);
+        AddRow(grid, "Pulse count", _manualPulses);
+        AddRow(grid, "Gap between pulses (ms)", _manualGap);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-        var applyDevice = Button("Aplicar dispositivo");
+        var applyDevice = Button("Apply device");
         applyDevice.Click += async (_, _) => await SafeUiAction(
             () => _coordinator.SetSimulatedRumbleAsync(_rumbleModeCombo.SelectedIndex == 1));
-        var start = Button("Iniciar teste", Color.FromArgb(25, 112, 71));
+        var start = Button("Start test", Color.FromArgb(25, 112, 71));
         start.Click += async (_, _) => await SafeUiAction(async () =>
         {
             var accepted = await _coordinator.PlayManualTestAsync(
@@ -211,16 +251,16 @@ public sealed class MainForm : Form
             if (!accepted)
             {
                 MessageBox.Show(
-                    "O efeito não foi aceito. Verifique se o dispositivo está disponível "
-                    + "e se haptics está habilitado.",
+                    "The effect was not accepted. Check that the selected device is "
+                    + "available and that haptics are enabled.",
                     Text,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
             }
         });
-        var stop = Button("Parar imediatamente", Color.FromArgb(177, 32, 37));
+        var stop = Button("Stop immediately", Color.FromArgb(177, 32, 37));
         stop.Click += async (_, _) => await SafeUiAction(
-            () => _coordinator.EmergencyStopAsync("parada do teste manual"));
+            () => _coordinator.EmergencyStopAsync("manual test stopped"));
         buttons.Controls.Add(applyDevice);
         buttons.Controls.Add(start);
         buttons.Controls.Add(stop);
@@ -228,9 +268,10 @@ public sealed class MainForm : Form
         panel.Controls.Add(buttons);
         panel.Controls.Add(grid);
         panel.Controls.Add(Info(
-            "O teste manual independe do iRacing. Frequência é o único parâmetro "
-            + "exposto pela C API; duração e pulsos são produzidos por comandos 0 Hz."));
-        panel.Controls.Add(SectionTitle("Teste de vibração"));
+            "The manual test does not require iRacing. Frequency is the only value "
+            + "exposed by the Toolkit C API; this app creates duration, gaps and "
+            + "multiple pulses by sending timed commands followed by 0 Hz."));
+        panel.Controls.Add(SectionTitle("Rumble test"));
         return panel;
     }
 
@@ -238,22 +279,24 @@ public sealed class MainForm : Form
     {
         var panel = ContentPanel();
         var grid = SettingsGrid();
-        AddRow(grid, "Detecção", _impactEnabled);
-        AddRow(grid, "Sensibilidade", _impactSensitivity);
-        AddRow(grid, "Limiar leve", _impactLight);
-        AddRow(grid, "Limiar médio", _impactMedium);
-        AddRow(grid, "Limiar forte", _impactStrong);
+        AddRow(grid, "Sensitivity multiplier", _impactSensitivity);
+        AddRow(grid, "Light threshold", _impactLight);
+        AddRow(grid, "Medium threshold", _impactMedium);
+        AddRow(grid, "Strong threshold", _impactStrong);
         AddRow(grid, "Cooldown (ms)", _impactCooldown);
-        AddRow(grid, "Velocidade mínima (m/s)", _impactMinSpeed);
-        AddRow(grid, "Batida leve: frequência (Hz)", _lightFreq);
-        AddRow(grid, "Batida leve: duração (ms)", _lightDuration);
-        AddRow(grid, "Batida média: frequência (Hz)", _mediumFreq);
-        AddRow(grid, "Batida média: duração (ms)", _mediumDuration);
-        AddRow(grid, "Batida forte: frequência (Hz)", _strongFreq);
-        AddRow(grid, "Batida forte: duração inicial (ms)", _strongDuration);
+        AddRow(grid, "Minimum speed (m/s)", _impactMinSpeed);
+        AddRow(grid, "Light impact frequency (Hz)", _lightFreq);
+        AddRow(grid, "Light impact duration (ms)", _lightDuration);
+        AddRow(grid, "Medium impact frequency (Hz)", _mediumFreq);
+        AddRow(grid, "Medium impact duration (ms)", _mediumDuration);
+        AddRow(grid, "Strong impact frequency (Hz)", _strongFreq);
+        AddRow(grid, "Strong impact initial duration (ms)", _strongDuration);
         panel.Controls.Add(SaveButton());
         panel.Controls.Add(grid);
-        panel.Controls.Add(SectionTitle("Batidas e colisões"));
+        panel.Controls.Add(Info(
+            "Thresholds decide whether an event is detected. Frequency and duration "
+            + "only change how an already-detected event feels."));
+        panel.Controls.Add(SectionTitle("Collision detection and feel"));
         return panel;
     }
 
@@ -261,29 +304,26 @@ public sealed class MainForm : Form
     {
         var panel = ContentPanel();
         var grid = SettingsGrid();
-        AddRow(grid, "Zebras fortes", _strongKerbsEnabled);
-        AddRow(grid, "Zebras leves", _lightKerbsEnabled);
-        AddRow(grid, "Pousos", _landingsEnabled);
-        AddRow(grid, "Quedas de roda", _wheelDropsEnabled);
-        AddRow(grid, "Compressões severas", _compressionEnabled);
-        AddRow(grid, "Sensibilidade vertical", _verticalSensitivity);
-        AddRow(grid, "Limiar de zebra forte", _kerbThreshold);
-        AddRow(grid, "Limiar de pouso", _landingThreshold);
-        AddRow(grid, "Limiar de compressão severa", _compressionThreshold);
-        AddRow(grid, "Cooldown vertical (ms)", _verticalCooldown);
-        AddRow(grid, "Zebra: frequência (Hz)", _kerbFreq);
-        AddRow(grid, "Zebra: duração (ms)", _kerbDuration);
-        AddRow(grid, "Pouso: frequência (Hz)", _landingFreq);
-        AddRow(grid, "Pouso: primeiro pulso (ms)", _landingDuration);
-        AddRow(grid, "Pouso: padrão", _landingDoublePulse);
-        AddRow(grid, "Pouso: intervalo (ms)", _landingGap);
+        AddRow(grid, "Vertical sensitivity multiplier", _verticalSensitivity);
+        AddRow(grid, "Strong kerb threshold", _kerbThreshold);
+        AddRow(grid, "Landing threshold", _landingThreshold);
+        AddRow(grid, "Severe compression threshold", _compressionThreshold);
+        AddRow(grid, "Vertical cooldown (ms)", _verticalCooldown);
+        AddRow(grid, "Kerb frequency (Hz)", _kerbFreq);
+        AddRow(grid, "Kerb duration (ms)", _kerbDuration);
+        AddRow(grid, "Landing frequency (Hz)", _landingFreq);
+        AddRow(grid, "Landing first pulse (ms)", _landingDuration);
+        AddRow(grid, "Landing pattern", _landingDoublePulse);
+        AddRow(grid, "Landing pulse gap (ms)", _landingGap);
+        AddRow(grid, "Landing second pulse (Hz)", _landingTailFrequency);
+        AddRow(grid, "Landing second pulse (ms)", _landingTailDuration);
         panel.Controls.Add(SaveButton());
         panel.Controls.Add(grid);
         panel.Controls.Add(Info(
-            "As variáveis TireLF/RF/LR/RR_RumblePitch e a suspensão são usadas quando "
-            + "o carro as fornece. Na ausência delas, o detector usa aceleração, jerk, "
-            + "velocidade vertical e rotação."));
-        panel.Controls.Add(SectionTitle("Impactos verticais"));
+            "TireLF/RF/LR/RR_RumblePitch and suspension telemetry are used when the "
+            + "car exposes them. Otherwise, the detector falls back to acceleration, "
+            + "jerk, vertical velocity and rotation."));
+        panel.Controls.Add(SectionTitle("Vertical impact detection and feel"));
         return panel;
     }
 
@@ -293,17 +333,17 @@ public sealed class MainForm : Form
         var grid = SettingsGrid();
         foreach (var (key, title) in new[]
         {
-            ("lat", "Aceleração lateral"),
-            ("long", "Aceleração longitudinal"),
-            ("vert", "Aceleração vertical"),
-            ("latjerk", "Jerk lateral"),
-            ("longjerk", "Jerk longitudinal"),
-            ("vertjerk", "Jerk vertical"),
-            ("impact", "Intensidade de batida"),
-            ("verticalscore", "Intensidade vertical"),
-            ("event", "Evento identificado"),
-            ("reason", "Motivo da classificação"),
-            ("rumble", "Comando enviado")
+            ("lat", "Lateral acceleration"),
+            ("long", "Longitudinal acceleration"),
+            ("vert", "Vertical acceleration"),
+            ("latjerk", "Lateral jerk"),
+            ("longjerk", "Longitudinal jerk"),
+            ("vertjerk", "Vertical jerk"),
+            ("impact", "Collision score"),
+            ("verticalscore", "Vertical score"),
+            ("event", "Detected event"),
+            ("reason", "Classification reason"),
+            ("rumble", "Last rumble command")
         })
         {
             var value = StatusLabel("—");
@@ -315,7 +355,7 @@ public sealed class MainForm : Form
             AddRow(grid, title, value);
         }
         panel.Controls.Add(grid);
-        panel.Controls.Add(SectionTitle("Diagnóstico em tempo real"));
+        panel.Controls.Add(SectionTitle("Live diagnostics"));
         return panel;
     }
 
@@ -326,9 +366,17 @@ public sealed class MainForm : Form
         var simulation = SettingsGrid();
         _scenarioCombo.DropDownStyle = ComboBoxStyle.DropDownList;
         _scenarioCombo.DataSource = Enum.GetValues<TelemetryScenario>();
-        AddRow(simulation, "Fonte", _telemetrySimulatorCheck);
-        AddRow(simulation, "Cenário", _scenarioCombo);
-        var playScenario = Button("Executar cenário");
+        _scenarioCombo.FormattingEnabled = true;
+        _scenarioCombo.Format += (_, args) =>
+        {
+            if (args.ListItem is TelemetryScenario scenario)
+            {
+                args.Value = ScenarioDisplayName(scenario);
+            }
+        };
+        AddRow(simulation, "Telemetry source", _telemetrySimulatorCheck);
+        AddRow(simulation, "Scenario", _scenarioCombo);
+        var playScenario = Button("Run scenario");
         playScenario.Click += async (_, _) => await SafeUiAction(async () =>
         {
             if (!_telemetrySimulatorCheck.Checked)
@@ -338,61 +386,99 @@ public sealed class MainForm : Form
             }
             await _coordinator.PlayScenarioAsync((TelemetryScenario)_scenarioCombo.SelectedItem!);
         });
-        AddRow(simulation, "Execução", playScenario);
+        AddRow(simulation, "Run", playScenario);
         _telemetrySimulatorCheck.CheckedChanged += async (_, _) => await SafeUiAction(
             () => _coordinator.UseTelemetrySimulatorAsync(_telemetrySimulatorCheck.Checked));
 
         var recorder = SettingsGrid();
         _recordingPath.AutoSize = true;
-        _recordingPath.Text = "Nenhuma gravação ativa";
-        AddRow(recorder, "Arquivo", _recordingPath);
+        _recordingPath.Text = "No active recording";
+        AddRow(recorder, "Current file", _recordingPath);
         var recordButtons = new FlowLayoutPanel { AutoSize = true };
-        var startRecord = Button("Iniciar gravação");
+        var startRecord = Button("Start recording");
         startRecord.Click += async (_, _) => await SafeUiAction(async () =>
         {
             await _coordinator.StartRecordingAsync();
-            _recordingPath.Text = "Gravando em " + _coordinator.RecordingsDirectory;
+            _recordingPath.Text = "Recording to " + _coordinator.RecordingsDirectory;
         });
-        var stopRecord = Button("Encerrar gravação");
+        var stopRecord = Button("Stop recording");
         stopRecord.Click += async (_, _) => await SafeUiAction(async () =>
         {
             await _coordinator.StopRecordingAsync();
-            _recordingPath.Text = "Gravação encerrada";
+            _recordingPath.Text = "Recording stopped";
         });
         recordButtons.Controls.Add(startRecord);
         recordButtons.Controls.Add(stopRecord);
-        AddRow(recorder, "Gravação JSONL", recordButtons);
+        AddRow(recorder, "JSONL recording", recordButtons);
 
         var markers = new FlowLayoutPanel { AutoSize = true };
-        foreach (var marker in new[] { "Isto foi uma batida", "Isto foi uma zebra forte", "Isto foi um pouso" })
+        foreach (var (buttonText, marker) in new[]
         {
-            var button = Button(marker);
+            ("Mark impact", "Impact"),
+            ("Mark strong kerb", "Strong kerb"),
+            ("Mark landing", "Landing")
+        })
+        {
+            var button = Button(buttonText);
             button.Click += async (_, _) => await SafeUiAction(
                 () => _coordinator.MarkAsync(marker));
             markers.Controls.Add(button);
         }
-        AddRow(recorder, "Marcação manual", markers);
+        AddRow(recorder, "Manual marker", markers);
 
         var files = new FlowLayoutPanel { AutoSize = true };
-        var analyze = Button("Comparar marcações");
+        var analyze = Button("Compare markers");
         analyze.Click += async (_, _) => await ChooseAndAnalyzeAsync();
-        var replay = Button("Reproduzir JSONL");
+        var replay = Button("Replay JSONL");
         replay.Click += async (_, _) => await ChooseAndReplayAsync();
-        var stopReplay = Button("Parar replay");
+        var stopReplay = Button("Stop replay");
         stopReplay.Click += async (_, _) => await SafeUiAction(
             () => _coordinator.StopReplayAsync());
-        var openFolder = Button("Abrir gravações");
+        var openFolder = Button("Open recordings folder");
         openFolder.Click += (_, _) => OpenDirectory(_coordinator.RecordingsDirectory);
         files.Controls.Add(analyze);
         files.Controls.Add(replay);
         files.Controls.Add(stopReplay);
         files.Controls.Add(openFolder);
-        AddRow(recorder, "Arquivo gravado", files);
+        AddRow(recorder, "Saved recording", files);
 
         panel.Controls.Add(recorder);
-        panel.Controls.Add(SectionTitle("Calibração e replay"));
+        panel.Controls.Add(Info(
+            "Matched means the current detector found the expected event within 500 ms "
+            + "of your marker. Missed means the corresponding threshold may be too high. "
+            + "Unmarked detections usually indicate false positives or an event that was "
+            + "not marked."));
+        panel.Controls.Add(SectionTitle("Recording, markers and replay"));
         panel.Controls.Add(simulation);
-        panel.Controls.Add(SectionTitle("Simulador de telemetria"));
+        panel.Controls.Add(Info(
+            "A scenario passes through the same detectors, event switches and effect "
+            + "patterns as live iRacing telemetry. Select PSVR2 Toolkit (real hardware) "
+            + "on the Manual test tab to feel it; the simulated rumble device only logs "
+            + "commands."));
+        panel.Controls.Add(SectionTitle("Telemetry simulator"));
+        panel.Controls.Add(Info(
+            "1. Open Effects and enable only the event categories you want to feel.\n"
+            + "2. On Manual test, find a comfortable frequency and duration first. "
+            + "These values change the feel, not event detection.\n"
+            + "3. Apply the Default profile. In an iRacing solo test session, drive "
+            + "two or three clean laps using normal braking and ordinary kerbs. The app "
+            + "should remain quiet.\n"
+            + "4. Start a JSONL recording. Reproduce one clear event at a time and click "
+            + "its marker immediately after it happens. Stop the recording when done.\n"
+            + "5. Click Compare markers. For a missed collision, lower only the matching "
+            + "collision threshold by 0.10–0.20. For a missed kerb or landing, lower the "
+            + "matching vertical threshold by 0.10–0.20. If normal driving triggers an "
+            + "event, raise that threshold by the same amount.\n"
+            + "6. Change one value at a time, save, and replay the same JSONL. Use the "
+            + "Collision score and Vertical score on Diagnostics as a guide.\n"
+            + "7. Once detection is reliable, tune frequency and duration for comfort. "
+            + "Cooldown only controls how soon the same family of events can repeat."));
+        panel.Controls.Add(Info(
+            "Detection controls: sensitivity and thresholds decide when an event exists. "
+            + "Feel controls: frequency, duration, pulse count and pulse gap decide how "
+            + "that event feels. Keeping those two stages separate prevents stronger "
+            + "rumble from hiding a poorly calibrated detector."));
+        panel.Controls.Add(SectionTitle("How to calibrate"));
         return panel;
     }
 
@@ -420,7 +506,7 @@ public sealed class MainForm : Form
         };
         _profileCombo.DropDownStyle = ComboBoxStyle.DropDownList;
         _profileCombo.Items.AddRange(ProfileCatalog.Names.Cast<object>().ToArray());
-        var applyProfile = Button("Aplicar perfil");
+        var applyProfile = Button("Apply profile");
         applyProfile.Click += async (_, _) => await SafeUiAction(async () =>
         {
             if (_profileCombo.SelectedItem is string profile)
@@ -432,7 +518,7 @@ public sealed class MainForm : Form
         var save = SaveButton();
         panel.Controls.Add(new Label
         {
-            Text = "Perfil:",
+            Text = "Profile:",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0)
         });
@@ -444,7 +530,7 @@ public sealed class MainForm : Form
 
     private Button SaveButton()
     {
-        var button = Button("Salvar configurações", Color.FromArgb(38, 92, 154));
+        var button = Button("Save settings", Color.FromArgb(38, 92, 154));
         button.Dock = DockStyle.Top;
         button.Margin = new Padding(0, 12, 0, 0);
         button.Click += async (_, _) => await SafeUiAction(async () =>
@@ -501,10 +587,14 @@ public sealed class MainForm : Form
         SetUnknownState(
             "headset",
             state.Toolkit.HeadsetAvailable,
-            "A C API atual não expõe presença separada; valide pelo teste manual.");
+            "The current C API does not expose headset presence separately; "
+            + "verify it with the manual test.");
         SetState("iracing", state.IRacingConnected, state.TelemetryStatus);
-        SetState("incar", state.DriverInCar, state.DriverInCar ? "Piloto no carro" : "Fora do carro");
-        SetState("haptics", state.HapticsEnabled, state.HapticsEnabled ? "Habilitado" : "Desabilitado");
+        SetState("incar", state.DriverInCar, state.DriverInCar ? "Driver in car" : "Out of car");
+        SetState(
+            "haptics",
+            state.HapticsEnabled,
+            state.HapticsEnabled ? "Enabled" : "Disabled");
         _stateValues["rumble"].Text = state.RumbleDeviceStatus;
         _stateValues["telemetry"].Text = state.TelemetryStatus;
 
@@ -512,9 +602,11 @@ public sealed class MainForm : Form
         if (diagnostics is not null)
         {
             _diagnosticValues["lat"].Text =
-                $"{diagnostics.Frame.LatAccelMps2:F2} m/s² (suave {diagnostics.SmoothedLatAccel:F2})";
+                $"{diagnostics.Frame.LatAccelMps2:F2} m/s² "
+                + $"(smoothed {diagnostics.SmoothedLatAccel:F2})";
             _diagnosticValues["long"].Text =
-                $"{diagnostics.Frame.LongAccelMps2:F2} m/s² (suave {diagnostics.SmoothedLongAccel:F2})";
+                $"{diagnostics.Frame.LongAccelMps2:F2} m/s² "
+                + $"(smoothed {diagnostics.SmoothedLongAccel:F2})";
             _diagnosticValues["vert"].Text =
                 $"{diagnostics.Frame.VertAccelMps2:F2} m/s² (Δ {diagnostics.VertDelta:F2})";
             _diagnosticValues["latjerk"].Text = $"{diagnostics.LatJerk:F1} m/s³";
@@ -535,10 +627,15 @@ public sealed class MainForm : Form
         _profileCombo.SelectedItem = settings.ActiveProfile;
         if (_profileCombo.SelectedIndex < 0)
         {
-            _profileCombo.SelectedItem = "Personalizado";
+            _profileCombo.SelectedItem = "Custom";
         }
         _rumbleModeCombo.SelectedIndex = settings.UseSimulatedRumbleDevice ? 1 : 0;
+        _hapticsEnabled.Checked = settings.HapticsEnabled;
         _impactEnabled.Checked = settings.Impacts.Enabled;
+        _lightImpactsEnabled.Checked = settings.Impacts.LightEnabled;
+        _mediumImpactsEnabled.Checked = settings.Impacts.MediumEnabled;
+        _strongImpactsEnabled.Checked = settings.Impacts.StrongEnabled;
+        _rolloverImpactsEnabled.Checked = settings.Impacts.RolloverEnabled;
         Set(_impactSensitivity, settings.Impacts.Sensitivity);
         Set(_impactLight, settings.Impacts.LightThreshold);
         Set(_impactMedium, settings.Impacts.MediumThreshold);
@@ -567,14 +664,25 @@ public sealed class MainForm : Form
         Set(_landingDuration, settings.Effects.Landing.DurationMs);
         _landingDoublePulse.Checked = settings.Effects.Landing.TailDurationMs > 0;
         Set(_landingGap, settings.Effects.Landing.GapMs);
+        Set(_landingTailFrequency, settings.Effects.Landing.TailFrequencyHz);
+        Set(
+            _landingTailDuration,
+            settings.Effects.Landing.TailDurationMs > 0
+                ? settings.Effects.Landing.TailDurationMs
+                : 110);
     }
 
     private AppSettings ReadSettings()
     {
         var settings = _coordinator.Settings;
-        settings.ActiveProfile = "Personalizado";
+        settings.ActiveProfile = "Custom";
+        settings.HapticsEnabled = _hapticsEnabled.Checked;
         settings.UseSimulatedRumbleDevice = _rumbleModeCombo.SelectedIndex == 1;
         settings.Impacts.Enabled = _impactEnabled.Checked;
+        settings.Impacts.LightEnabled = _lightImpactsEnabled.Checked;
+        settings.Impacts.MediumEnabled = _mediumImpactsEnabled.Checked;
+        settings.Impacts.StrongEnabled = _strongImpactsEnabled.Checked;
+        settings.Impacts.RolloverEnabled = _rolloverImpactsEnabled.Checked;
         settings.Impacts.Sensitivity = (double)_impactSensitivity.Value;
         settings.Impacts.LightThreshold = (double)_impactLight.Value;
         settings.Impacts.MediumThreshold = (double)_impactMedium.Value;
@@ -603,15 +711,15 @@ public sealed class MainForm : Form
         settings.Effects.Landing.DurationMs = (int)_landingDuration.Value;
         settings.Effects.Landing.GapMs = (int)_landingGap.Value;
         settings.Effects.Landing.TailFrequencyHz =
-            _landingDoublePulse.Checked ? (byte)14 : (byte)0;
+            _landingDoublePulse.Checked ? (byte)_landingTailFrequency.Value : (byte)0;
         settings.Effects.Landing.TailDurationMs =
-            _landingDoublePulse.Checked ? 50 : 0;
+            _landingDoublePulse.Checked ? (int)_landingTailDuration.Value : 0;
         return settings;
     }
 
     private async Task ChooseAndAnalyzeAsync()
     {
-        using var dialog = JsonlDialog("Selecionar gravação para comparar");
+        using var dialog = JsonlDialog("Select a recording to compare");
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -620,11 +728,11 @@ public sealed class MainForm : Form
         {
             var report = await _coordinator.AnalyzeRecordingAsync(dialog.FileName);
             MessageBox.Show(
-                $"Marcações: {report.MarkerCount}\n"
-                + $"Detectadas: {report.MatchedCount}\n"
-                + $"Não detectadas: {report.MissedCount}\n"
-                + $"Detecções sem marcação: {report.UnmarkedDetectionCount}",
-                "Resultado da calibração",
+                $"Markers: {report.MarkerCount}\n"
+                + $"Matched: {report.MatchedCount}\n"
+                + $"Missed: {report.MissedCount}\n"
+                + $"Unmarked detections: {report.UnmarkedDetectionCount}",
+                "Calibration result",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         });
@@ -632,7 +740,7 @@ public sealed class MainForm : Form
 
     private async Task ChooseAndReplayAsync()
     {
-        using var dialog = JsonlDialog("Selecionar gravação para reproduzir");
+        using var dialog = JsonlDialog("Select a recording to replay");
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -688,7 +796,7 @@ public sealed class MainForm : Form
     {
         if (value.HasValue)
         {
-            SetState(key, value.Value, value.Value ? "Disponível" : "Indisponível");
+            SetState(key, value.Value, value.Value ? "Available" : "Unavailable");
             return;
         }
         var label = _stateValues[key];
@@ -789,6 +897,19 @@ public sealed class MainForm : Form
         Padding = new Padding(0, 4, 0, 4)
     };
 
+    private static FlowLayoutPanel InlineChecks(params CheckBox[] checkBoxes)
+    {
+        var panel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = Padding.Empty
+        };
+        panel.Controls.AddRange(checkBoxes.Cast<Control>().ToArray());
+        return panel;
+    }
+
     private static NumericUpDown Number(
         decimal minimum,
         decimal maximum,
@@ -814,9 +935,26 @@ public sealed class MainForm : Form
     private static OpenFileDialog JsonlDialog(string title) => new()
     {
         Title = title,
-        Filter = "Telemetria JSONL (*.jsonl)|*.jsonl|Todos os arquivos (*.*)|*.*",
+        Filter = "JSONL telemetry (*.jsonl)|*.jsonl|All files (*.*)|*.*",
         CheckFileExists = true,
         Multiselect = false
+    };
+
+    private static string ScenarioDisplayName(TelemetryScenario scenario) => scenario switch
+    {
+        TelemetryScenario.Parked => "Parked car",
+        TelemetryScenario.NormalAcceleration => "Normal acceleration",
+        TelemetryScenario.HardBraking => "Hard braking",
+        TelemetryScenario.LightKerb => "Light kerb",
+        TelemetryScenario.StrongKerb => "Strong kerb",
+        TelemetryScenario.WheelDrop => "Wheel drop",
+        TelemetryScenario.Landing => "Car landing",
+        TelemetryScenario.SideImpact => "Side impact",
+        TelemetryScenario.FrontImpact => "Front impact",
+        TelemetryScenario.StrongCollision => "Strong collision",
+        TelemetryScenario.Rollover => "Rollover",
+        TelemetryScenario.ConnectionLoss => "Connection loss",
+        _ => scenario.ToString()
     };
 
     private static void OpenDirectory(string directory)

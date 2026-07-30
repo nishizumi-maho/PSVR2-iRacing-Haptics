@@ -1,16 +1,16 @@
-# Resultado da validação da versão 0.1.0
+# Version 0.2.0 validation
 
-Data: 29 de julho de 2026.
+Date: July 29, 2026.
 
-## Ambiente
+## Environment
 
 - SDK: .NET 8.0.423;
-- alvo do aplicativo: `net8.0-windows`, `win-x64`;
-- publicação: autocontida, sem trimming e sem single-file;
-- ambiente de compilação: contêiner Linux;
-- hardware físico indisponível: PSVR2, driver do Toolkit e iRacing.
+- app target: `net8.0-windows`, `win-x64`;
+- publication: self-contained, untrimmed and not single-file;
+- build environment: Linux container;
+- unavailable physical hardware: PSVR2, Toolkit driver and iRacing.
 
-## Compilação
+## Build
 
 ```text
 Build succeeded.
@@ -18,34 +18,34 @@ Build succeeded.
     0 Error(s)
 ```
 
-O executável publicado foi identificado como `PE32+ executable (GUI) x86-64`
-para Windows. O pacote foi inspecionado para confirmar que não contém
-`psvr2_toolkit_capi.dll` nem executáveis do PSVR2 Toolkit.
+The published executable is a Windows x86-64 GUI PE. The package is inspected
+to confirm that it does not contain `psvr2_toolkit_capi.dll` or a PSVR2 Toolkit
+executable.
 
-## Testes automatizados
+## Automated tests
 
 ```text
-Resultado: 25/25 testes aprovados.
+Result: 32/32 tests passed.
 ```
 
-Os testes cobrem persistência e validação de configuração, filtro e jerk,
-rejeição de aceleração e frenagem normais, zebra leve, colisões lateral,
-frontal e forte, capotamento, pouso, queda de roda, telemetria inválida,
-mapeamento de efeitos, prioridade e preempção, envio de `0 Hz`, cancelamento,
-parada de emergência, dispositivo indisponível, gravação/replay/calibração e
-ausência segura do Toolkit e do iRacing.
+Coverage includes settings persistence, validation and migrations; filtering
+and jerk; rejection of normal acceleration and hard braking; light/strong
+kerbs; lateral, front and strong collisions; rollover; landing; wheel drop;
+invalid telemetry; effect mapping; priority and preemption; mandatory `0 Hz`;
+cancellation; emergency stop; unavailable devices; recording/replay/calibration;
+safe absence of the Toolkit and iRacing; per-event output policy; detection
+while an output category is disabled; and Portuguese profile-name migration.
 
-## Limite da validação
+## Validation limits
 
-O aplicativo WinForms não pôde ser iniciado neste ambiente Linux e nenhuma
-vibração física foi comandada. Portanto, ainda dependem de Windows e hardware
-real:
+The WinForms UI cannot be launched in this Linux environment, and no physical
+rumble was commanded. The following still require Windows and real hardware:
 
-- confirmação de que `0` desliga o motor no firmware usado;
-- sensação e correspondência física dos valores chamados de Hz;
-- detecção separada de headset conectado;
-- comportamento durante perda real do driver;
-- ajuste dos limiares por carro e pista;
-- convivência com outros clientes da C API.
+- confirmation that `0` stops the motor with the installed headset firmware;
+- perceived sensation and physical correspondence of values called Hz;
+- separate detection of a connected headset;
+- behavior during real driver loss;
+- car/track-specific threshold tuning;
+- coexistence with other C API clients.
 
-O roteiro reproduzível está em `docs/HARDWARE_TEST.md`.
+The reproducible procedure is in `docs/HARDWARE_TEST.md`.

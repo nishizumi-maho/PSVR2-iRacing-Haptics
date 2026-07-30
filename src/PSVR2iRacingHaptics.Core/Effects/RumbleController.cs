@@ -21,7 +21,7 @@ public sealed class RumbleController : IAsyncDisposable
     private bool _disposed;
     private byte _lastFrequency;
     private int _lastDuration;
-    private string _lastAction = "Aguardando";
+    private string _lastAction = "Waiting";
 
     public RumbleController(
         IHmdRumbleDevice device,
@@ -67,7 +67,7 @@ public sealed class RumbleController : IAsyncDisposable
             if (!_activeTask.IsCompleted && effect.Priority <= _activePriority)
             {
                 _logger.Info(
-                    $"Efeito ignorado por prioridade: {effect.Name} ({effect.Priority}) "
+                    $"Effect ignored because of priority: {effect.Name} ({effect.Priority}) "
                     + $"≤ {_activeEffect} ({_activePriority}).");
                 return Task.FromResult(false);
             }
@@ -82,8 +82,8 @@ public sealed class RumbleController : IAsyncDisposable
             _activePriority = effect.Priority;
             _activeEffect = effect.Name;
             _lastAction = previous.IsCompleted
-                ? $"Iniciando {effect.Name}"
-                : $"Substituindo por {effect.Name}";
+                ? $"Starting {effect.Name}"
+                : $"Replacing current effect with {effect.Name}";
             PublishStatusLocked();
 
             _activeTask = RunAfterPreviousAsync(
@@ -103,19 +103,19 @@ public sealed class RumbleController : IAsyncDisposable
         {
             ThrowIfDisposed();
             _enabled = enabled;
-            _lastAction = enabled ? "Haptics habilitado" : "Haptics desabilitado";
+            _lastAction = enabled ? "Haptics enabled" : "Haptics disabled";
             PublishStatusLocked();
         }
 
         if (!enabled)
         {
-            await EmergencyStopAsync("recurso desativado", cancellationToken)
+            await EmergencyStopAsync("haptics disabled", cancellationToken)
                 .ConfigureAwait(false);
         }
     }
 
     public async Task EmergencyStopAsync(
-        string reason = "parada imediata",
+        string reason = "immediate stop",
         CancellationToken cancellationToken = default)
     {
         Task active;
@@ -128,7 +128,7 @@ public sealed class RumbleController : IAsyncDisposable
 
             _activeCancellation?.Cancel();
             active = _activeTask;
-            _lastAction = $"Parada: {reason}";
+            _lastAction = $"Stopped: {reason}";
             PublishStatusLocked();
         }
 
@@ -140,7 +140,7 @@ public sealed class RumbleController : IAsyncDisposable
         catch (Exception ex) when (
             ex is OperationCanceledException or TimeoutException or InvalidOperationException)
         {
-            _logger.Warning($"Efeito não encerrou normalmente durante {reason}: {ex.Message}");
+            _logger.Warning($"Effect did not stop normally during {reason}: {ex.Message}");
         }
 
         await SendOffBestEffortAsync(reason, cancellationToken).ConfigureAwait(false);
@@ -160,7 +160,7 @@ public sealed class RumbleController : IAsyncDisposable
             }
             catch
             {
-                // A tarefa anterior já executou seu próprio desligamento e log.
+                // The previous task already performed its own shutdown and logging.
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -168,15 +168,15 @@ public sealed class RumbleController : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            _logger.Info($"Efeito cancelado: {effect.Name}.");
+            _logger.Info($"Effect canceled: {effect.Name}.");
         }
         catch (Exception ex)
         {
-            _logger.Error($"Falha no efeito {effect.Name}; desligamento solicitado.", ex);
+            _logger.Error($"Effect {effect.Name} failed; shutdown requested.", ex);
         }
         finally
         {
-            await SendOffBestEffortAsync($"fim de {effect.Name}", CancellationToken.None)
+            await SendOffBestEffortAsync($"end of {effect.Name}", CancellationToken.None)
                 .ConfigureAwait(false);
             lock (_stateLock)
             {
@@ -186,7 +186,7 @@ public sealed class RumbleController : IAsyncDisposable
                     _activeEffect = string.Empty;
                     _lastFrequency = 0;
                     _lastDuration = 0;
-                    _lastAction = $"Concluído: {effect.Name}";
+                    _lastAction = $"Completed: {effect.Name}";
                     PublishStatusLocked();
                 }
             }
@@ -199,8 +199,8 @@ public sealed class RumbleController : IAsyncDisposable
     {
         var started = DateTimeOffset.UtcNow;
         _logger.Info(
-            $"Efeito aceito: {effect.Name}; prioridade={effect.Priority}; "
-            + $"duração planejada={effect.TotalDurationMs} ms.");
+            $"Effect accepted: {effect.Name}; priority={effect.Priority}; "
+            + $"planned duration={effect.TotalDurationMs} ms.");
 
         foreach (var pulse in effect.Pulses)
         {
@@ -208,7 +208,7 @@ public sealed class RumbleController : IAsyncDisposable
             var elapsed = (DateTimeOffset.UtcNow - started).TotalMilliseconds;
             if (elapsed >= _safety.MaximumEffectDurationMs)
             {
-                _logger.Warning($"Efeito {effect.Name} atingiu a duração máxima.");
+                _logger.Warning($"Effect {effect.Name} reached the maximum duration.");
                 break;
             }
 
@@ -229,10 +229,10 @@ public sealed class RumbleController : IAsyncDisposable
             {
                 _lastFrequency = frequency;
                 _lastDuration = duration;
-                _lastAction = $"Rumble: {frequency} Hz por {duration} ms";
+                _lastAction = $"Rumble: {frequency} Hz for {duration} ms";
                 PublishStatusLocked();
             }
-            _logger.Info($"Rumble: {frequency} Hz por {duration} ms");
+            _logger.Info($"Rumble: {frequency} Hz for {duration} ms");
 
             try
             {
@@ -240,14 +240,14 @@ public sealed class RumbleController : IAsyncDisposable
             }
             finally
             {
-                await SendOffBestEffortAsync("fim do pulso", CancellationToken.None)
+                await SendOffBestEffortAsync("end of pulse", CancellationToken.None)
                     .ConfigureAwait(false);
             }
 
             if (pulse.PauseAfterMs > 0)
             {
                 var pause = Math.Min(pulse.PauseAfterMs, 1000);
-                _logger.Info($"Pausa: {pause} ms");
+                _logger.Info($"Pause: {pause} ms");
                 await Task.Delay(pause, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -322,7 +322,7 @@ public sealed class RumbleController : IAsyncDisposable
         catch (Exception ex) when (
             ex is OperationCanceledException or InvalidOperationException or TimeoutException)
         {
-            _logger.Warning($"Não foi possível confirmar Rumble OFF ({reason}): {ex.Message}");
+            _logger.Warning($"Could not confirm Rumble OFF ({reason}): {ex.Message}");
         }
     }
 
@@ -354,7 +354,7 @@ public sealed class RumbleController : IAsyncDisposable
             }
         }
 
-        await EmergencyStopAsync("encerramento").ConfigureAwait(false);
+        await EmergencyStopAsync("shutdown").ConfigureAwait(false);
         lock (_stateLock)
         {
             _disposed = true;

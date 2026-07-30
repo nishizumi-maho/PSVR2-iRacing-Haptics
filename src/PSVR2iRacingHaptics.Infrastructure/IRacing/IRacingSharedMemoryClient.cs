@@ -32,7 +32,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
     }
 
     public bool IsConnected { get; private set; }
-    public string StatusDescription { get; private set; } = "iRacing não conectado";
+    public string StatusDescription { get; private set; } = "iRacing not connected";
     public event EventHandler<TelemetryFrame>? FrameReceived;
     public event EventHandler<bool>? ConnectionChanged;
 
@@ -67,14 +67,14 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
         }
         lifetime.Dispose();
         CloseMapping();
-        SetConnected(false, "iRacing desconectado");
+        SetConnected(false, "iRacing disconnected");
     }
 
     private async Task ReaderLoopAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
         {
-            StatusDescription = "A memória compartilhada do iRacing requer Windows.";
+            StatusDescription = "iRacing shared memory requires Windows.";
             return;
         }
 
@@ -86,7 +86,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
                 {
                     if (!TryOpenMapping())
                     {
-                        SetConnected(false, "Aguardando o iRacing");
+                        SetConnected(false, "Waiting for iRacing");
                         await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
@@ -95,7 +95,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
                 if (!HeaderIsConnected())
                 {
                     CloseMapping();
-                    SetConnected(false, "Aguardando telemetria válida do iRacing");
+                    SetConnected(false, "Waiting for valid iRacing telemetry");
                     await Task.Delay(750, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -103,7 +103,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
                 if (!IsConnected)
                 {
                     BuildVariableIndex();
-                    SetConnected(true, $"iRacing conectado ({_variables.Count} variáveis)");
+                    SetConnected(true, $"iRacing connected ({_variables.Count} variables)");
                     LogVariableAvailability();
                 }
 
@@ -116,8 +116,8 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
                     {
                         _lastInCar = frame.IsDriverInCar;
                         _logger.Info(frame.IsDriverInCar
-                            ? "Piloto entrou no carro."
-                            : "Piloto saiu do carro ou a telemetria ficou inválida.");
+                            ? "Driver entered the car."
+                            : "Driver left the car or telemetry became invalid.");
                     }
                     FrameReceived?.Invoke(this, frame);
                 }
@@ -132,9 +132,9 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
             }
             catch (Exception ex)
             {
-                _logger.Error("Falha ao ler a telemetria do iRacing; reconectando.", ex);
+                _logger.Error("Failed to read iRacing telemetry; reconnecting.", ex);
                 CloseMapping();
-                SetConnected(false, "Falha de leitura; tentando reconectar");
+                SetConnected(false, "Read failure; attempting to reconnect");
                 await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -186,7 +186,7 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
         if (numVars is < 1 or > 5000 || varHeaderOffset < HeaderSize)
         {
             throw new InvalidDataException(
-                $"Cabeçalho de variáveis inválido: count={numVars}, offset={varHeaderOffset}.");
+                $"Invalid variable header: count={numVars}, offset={varHeaderOffset}.");
         }
 
         for (var index = 0; index < numVars; index++)
@@ -355,25 +355,25 @@ public sealed class IRacingSharedMemoryClient : ITelemetryClient
         if (missingRequired.Length > 0)
         {
             _logger.Warning(
-                "Variáveis essenciais ausentes: " + string.Join(", ", missingRequired));
+                "Missing required variables: " + string.Join(", ", missingRequired));
         }
 
         var optionalGroups = new[]
         {
-            ("suspensão", new[] { "LFshockVel", "RFshockVel", "LRshockVel", "RRshockVel" }),
+            ("suspension", new[] { "LFshockVel", "RFshockVel", "LRshockVel", "RRshockVel" }),
             ("rumble strip", new[]
             {
                 "TireLF_RumblePitch", "TireRF_RumblePitch",
                 "TireLR_RumblePitch", "TireRR_RumblePitch"
             }),
-            ("incidentes", new[] { "PlayerCarMyIncidentCount" })
+            ("incidents", new[] { "PlayerCarMyIncidentCount" })
         };
         foreach (var (group, variables) in optionalGroups)
         {
             if (!variables.Any(_variables.ContainsKey))
             {
                 _logger.Warning(
-                    $"Telemetria opcional de {group} indisponível; serão usados sinais alternativos.");
+                    $"Optional {group} telemetry is unavailable; fallback signals will be used.");
             }
         }
     }

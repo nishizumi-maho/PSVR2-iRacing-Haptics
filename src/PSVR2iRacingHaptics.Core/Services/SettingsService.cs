@@ -39,7 +39,17 @@ public sealed class SettingsService
                 _jsonOptions,
                 cancellationToken).ConfigureAwait(false);
 
-            return Validate(settings ?? new AppSettings());
+            settings ??= new AppSettings();
+            var previousSchemaVersion = settings.SchemaVersion;
+            settings = Migrate(settings);
+            if (previousSchemaVersion < AppSettings.CurrentSchemaVersion)
+            {
+                _logger.Info(
+                    $"Settings migrated from schema {previousSchemaVersion} "
+                    + $"to {AppSettings.CurrentSchemaVersion}.");
+            }
+
+            return Validate(settings);
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -50,10 +60,10 @@ public sealed class SettingsService
             }
             catch
             {
-                // A cópia é somente uma tentativa de preservar o arquivo inválido.
+                // The backup is only a best-effort attempt to preserve the invalid file.
             }
 
-            _logger.Error("Configuração inválida; valores padrão foram carregados.", ex);
+            _logger.Error("Invalid settings file; default values were loaded.", ex);
             return new AppSettings();
         }
         finally
@@ -66,12 +76,12 @@ public sealed class SettingsService
         AppSettings settings,
         CancellationToken cancellationToken = default)
     {
-        settings = Validate(settings);
+        settings = Validate(Migrate(settings));
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var directory = Path.GetDirectoryName(_path)
-                ?? throw new InvalidOperationException("Caminho de configuração inválido.");
+                ?? throw new InvalidOperationException("Invalid settings path.");
             Directory.CreateDirectory(directory);
 
             var temporaryPath = _path + ".tmp";
@@ -92,7 +102,7 @@ public sealed class SettingsService
             }
 
             File.Move(temporaryPath, _path, overwrite: true);
-            _logger.Info($"Configurações salvas: {_path}");
+            _logger.Info($"Settings saved: {_path}");
         }
         finally
         {
@@ -102,10 +112,8 @@ public sealed class SettingsService
 
     private static AppSettings Validate(AppSettings settings)
     {
-        settings.SchemaVersion = 1;
-        settings.ActiveProfile = string.IsNullOrWhiteSpace(settings.ActiveProfile)
-            ? "Personalizado"
-            : settings.ActiveProfile;
+        settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
+        settings.ActiveProfile = ProfileCatalog.NormalizeName(settings.ActiveProfile);
 
         settings.Impacts.Sensitivity = Math.Clamp(settings.Impacts.Sensitivity, 0.2, 3.0);
         settings.Impacts.LightThreshold = Math.Clamp(settings.Impacts.LightThreshold, 0.2, 20);
@@ -179,6 +187,112 @@ public sealed class SettingsService
         }
 
         return settings;
+    }
+
+    private static AppSettings Migrate(AppSettings settings)
+    {
+        if (settings.SchemaVersion >= AppSettings.CurrentSchemaVersion)
+        {
+            return settings;
+        }
+
+        if (settings.SchemaVersion <= 1)
+        {
+            var normalizedProfile = ProfileCatalog.NormalizeName(settings.ActiveProfile);
+            var targetProfile = normalizedProfile is "Gentle" or "Strong"
+                ? ProfileCatalog.Create(normalizedProfile)
+                : new AppSettings();
+
+            UpgradeLegacyPattern(
+                settings.Effects.LightImpact,
+                targetProfile.Effects.LightImpact,
+                legacyDurationMs: 75);
+            UpgradeLegacyPattern(
+                settings.Effects.MediumImpact,
+                targetProfile.Effects.MediumImpact,
+                legacyDurationMs: 125);
+            UpgradeLegacyPattern(
+                settings.Effects.StrongImpact,
+                targetProfile.Effects.StrongImpact,
+                legacyDurationMs: 145,
+                legacyGapMs: 40,
+                legacyTailDurationMs: 80);
+            UpgradeLegacyPattern(
+                settings.Effects.Rollover,
+                targetProfile.Effects.Rollover,
+                legacyDurationMs: 90,
+                legacyGapMs: 45);
+            UpgradeLegacyPattern(
+                settings.Effects.StrongKerb,
+                targetProfile.Effects.StrongKerb,
+                legacyDurationMs: 60,
+                legacyFrequencyHz: 13);
+            UpgradeLegacyPattern(
+                settings.Effects.WheelDrop,
+                targetProfile.Effects.WheelDrop,
+                legacyDurationMs: 80,
+                legacyFrequencyHz: 15);
+            UpgradeLegacyPattern(
+                settings.Effects.Landing,
+                targetProfile.Effects.Landing,
+                legacyDurationMs: 60,
+                legacyGapMs: 30,
+                legacyTailDurationMs: 50,
+                legacyFrequencyHz: 18,
+                legacyTailFrequencyHz: 14);
+            UpgradeLegacyPattern(
+                settings.Effects.SevereCompression,
+                targetProfile.Effects.SevereCompression,
+                legacyDurationMs: 105);
+
+            if (settings.Safety.MaximumContinuousRumbleMs == 300)
+            {
+                settings.Safety.MaximumContinuousRumbleMs =
+                    targetProfile.Safety.MaximumContinuousRumbleMs;
+            }
+            if (settings.Safety.MaximumEffectDurationMs == 700)
+            {
+                settings.Safety.MaximumEffectDurationMs =
+                    targetProfile.Safety.MaximumEffectDurationMs;
+            }
+        }
+
+        settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
+        return settings;
+    }
+
+    private static void UpgradeLegacyPattern(
+        EffectPatternSettings current,
+        EffectPatternSettings target,
+        int legacyDurationMs,
+        int? legacyGapMs = null,
+        int? legacyTailDurationMs = null,
+        byte? legacyFrequencyHz = null,
+        byte? legacyTailFrequencyHz = null)
+    {
+        if (legacyFrequencyHz.HasValue
+            && current.FrequencyHz == legacyFrequencyHz.Value)
+        {
+            current.FrequencyHz = target.FrequencyHz;
+        }
+        if (current.DurationMs == legacyDurationMs)
+        {
+            current.DurationMs = target.DurationMs;
+        }
+        if (legacyGapMs.HasValue && current.GapMs == legacyGapMs.Value)
+        {
+            current.GapMs = target.GapMs;
+        }
+        if (legacyTailDurationMs.HasValue
+            && current.TailDurationMs == legacyTailDurationMs.Value)
+        {
+            current.TailDurationMs = target.TailDurationMs;
+        }
+        if (legacyTailFrequencyHz.HasValue
+            && current.TailFrequencyHz == legacyTailFrequencyHz.Value)
+        {
+            current.TailFrequencyHz = target.TailFrequencyHz;
+        }
     }
 
     private static IEnumerable<EffectPatternSettings> EnumeratePatterns(EffectSettings effects)

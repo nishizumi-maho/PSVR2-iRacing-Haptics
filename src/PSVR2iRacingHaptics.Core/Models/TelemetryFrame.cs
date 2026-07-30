@@ -1,7 +1,7 @@
 namespace PSVR2iRacingHaptics.Core.Models;
 
 /// <summary>
-/// Snapshot normalizado da telemetria do carro do jogador.
+/// Normalized snapshot of the player's car telemetry.
 /// Unidades seguem o SDK do iRacing: m/s, m/s², rad e rad/s.
 /// </summary>
 public sealed record TelemetryFrame

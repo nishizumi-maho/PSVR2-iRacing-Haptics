@@ -69,7 +69,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         {
             return UpdateStatus(new Psvr2ToolkitStatus
             {
-                Message = "A API real do PSVR2 Toolkit requer Windows x64."
+                Message = "The real PSVR2 Toolkit API requires Windows x64."
             });
         }
 
@@ -77,7 +77,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         {
             return UpdateStatus(new Psvr2ToolkitStatus
             {
-                Message = "Arquitetura incompatível: execute a versão x64."
+                Message = "Incompatible architecture: run the x64 build."
             });
         }
 
@@ -88,8 +88,8 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             {
                 PathFile = pathFile,
                 Message =
-                    "PSVR2 Toolkit não detectado: arquivo de caminho ausente. "
-                    + "Inicie o Toolkit/SteamVR primeiro."
+                    "PSVR2 Toolkit was not detected: the path file is missing. "
+                    + "Start the Toolkit and SteamVR first."
             });
         }
 
@@ -103,12 +103,12 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.Error("Não foi possível ler o arquivo de caminho do Toolkit.", ex);
+            _logger.Error("Could not read the Toolkit path file.", ex);
             return UpdateStatus(new Psvr2ToolkitStatus
             {
                 PathFileFound = true,
                 PathFile = pathFile,
-                Message = "Falha ao ler o arquivo de caminho do PSVR2 Toolkit."
+                Message = "Failed to read the PSVR2 Toolkit path file."
             });
         }
 
@@ -118,7 +118,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             {
                 PathFileFound = true,
                 PathFile = pathFile,
-                Message = "O arquivo de caminho do Toolkit está vazio."
+                Message = "The Toolkit path file is empty."
             });
         }
 
@@ -130,7 +130,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
                 PathFileFound = true,
                 PathFile = pathFile,
                 DllPath = dllPath,
-                Message = $"DLL da C API não encontrada: {dllPath}"
+                Message = $"C API DLL not found: {dllPath}"
             });
         }
 
@@ -143,7 +143,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             catch (Exception ex) when (
                 ex is DllNotFoundException or BadImageFormatException or FileLoadException)
             {
-                _logger.Error($"Falha ao carregar {dllPath}.", ex);
+                _logger.Error($"Failed to load {dllPath}.", ex);
                 return UpdateStatus(new Psvr2ToolkitStatus
                 {
                     PathFileFound = true,
@@ -151,8 +151,8 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
                     DllFound = true,
                     DllPath = dllPath,
                     Message =
-                        "A DLL foi encontrada, mas não pôde ser carregada. "
-                        + "Verifique arquitetura e dependências do Toolkit."
+                        "The DLL was found but could not be loaded. "
+                        + "Check the Toolkit architecture and dependencies."
                 });
             }
         }
@@ -168,14 +168,14 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         }
         catch (EntryPointNotFoundException ex)
         {
-            _logger.Error("A C API é incompatível: export obrigatório ausente.", ex);
+            _logger.Error("The C API is incompatible: a required export is missing.", ex);
             return UpdateStatus(BuildStatus(
                 pathFile,
                 dllPath,
                 exportsResolved: false,
                 initializationResult: null,
                 driverActive: false,
-                "Função obrigatória não exportada pela DLL; atualize o PSVR2 Toolkit."));
+                "A required function is not exported by the DLL; update PSVR2 Toolkit."));
         }
 
         return await TryInitializeNativeAsync(pathFile, dllPath, cancellationToken)
@@ -199,8 +199,8 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
                 DriverActive = false,
                 ApiInitialized = false,
                 Message =
-                    "Uma chamada nativa excedeu o tempo limite. "
-                    + "Reinicie este aplicativo e o PSVR2 Toolkit."
+                    "A native call exceeded the time limit. "
+                    + "Restart this app and PSVR2 Toolkit."
             });
         }
 
@@ -224,7 +224,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         catch (Exception ex) when (
             ex is TimeoutException or InvalidOperationException or OperationCanceledException)
         {
-            _logger.Warning($"Falha ao consultar o driver: {ex.Message}");
+            _logger.Warning($"Failed to query the driver: {ex.Message}");
             active = false;
         }
 
@@ -235,8 +235,8 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             NativeCallTimedOut = _nativeCallTimedOut,
             HeadsetAvailable = null,
             Message = active
-                ? "Toolkit e driver ativos; presença do headset não é exposta pela C API."
-                : "DLL/API carregada, mas o driver do Toolkit está inativo."
+                ? "Toolkit and driver active; headset presence is not exposed by the C API."
+                : "DLL/API loaded, but the Toolkit driver is inactive."
         });
     }
 
@@ -249,7 +249,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         {
             throw new ArgumentOutOfRangeException(
                 nameof(frequencyHz),
-                "Este aplicativo limita a frequência ao intervalo 0–25 Hz do teste oficial.");
+                "This app limits frequency to the official test app's 0–25 Hz range.");
         }
 
         if (!IsAvailable || _setHmdRumble is null)
@@ -289,16 +289,16 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
                 exportsResolved: true,
                 initializationResult: null,
                 driverActive: false,
-                $"Falha ao inicializar a C API: {ex.Message}"));
+                $"Failed to initialize the C API: {ex.Message}"));
         }
 
         _nativeInitialized = result == 0;
         var message = result switch
         {
-            0 => "C API inicializada; verificando driver.",
-            -1 => "O driver do PSVR2 Toolkit está inativo.",
-            -2 => "A C API recusou a inicialização: todos os 8 slots estão ocupados.",
-            _ => $"A C API recusou a inicialização com código desconhecido {result}."
+            0 => "C API initialized; checking the driver.",
+            -1 => "The PSVR2 Toolkit driver is inactive.",
+            -2 => "The C API rejected initialization: all 8 client slots are occupied.",
+            _ => $"The C API rejected initialization with unknown code {result}."
         };
 
         var driverActive = false;
@@ -314,14 +314,14 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             catch (Exception ex) when (
                 ex is TimeoutException or InvalidOperationException or OperationCanceledException)
             {
-                _logger.Warning($"Não foi possível consultar o driver: {ex.Message}");
+                _logger.Warning($"Could not query the driver: {ex.Message}");
             }
         }
 
         if (result == 0 && driverActive)
         {
             message =
-                "Toolkit e driver ativos; presença do headset não é exposta pela C API.";
+                "Toolkit and driver active; headset presence is not exposed by the C API.";
         }
 
         var status = BuildStatus(
@@ -335,8 +335,8 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             ApiInitialized = _nativeInitialized
         };
         _logger.Info(
-            $"Toolkit: DLL={dllPath}; versão={status.ToolkitVersion}; "
-            + $"init={result}; driverAtivo={driverActive}.");
+            $"Toolkit: DLL={dllPath}; version={status.ToolkitVersion}; "
+            + $"init={result}; driverActive={driverActive}.");
         return UpdateStatus(status);
     }
 
@@ -348,7 +348,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         bool driverActive,
         string message)
     {
-        var version = "não exposta pela C API";
+        var version = "not exposed by the C API";
         try
         {
             var info = FileVersionInfo.GetVersionInfo(dllPath);
@@ -407,7 +407,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             if (_nativeCallTimedOut)
             {
                 throw new InvalidOperationException(
-                    "Chamadas nativas foram bloqueadas após um timeout anterior.");
+                    "Native calls were blocked after a previous timeout.");
             }
 
             var nativeTask = Task.Run(action, CancellationToken.None);
@@ -424,10 +424,10 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
                     DriverActive = false,
                     ApiInitialized = false,
                     Message =
-                        $"Timeout em {operation}; novas chamadas foram bloqueadas por segurança."
+                        $"Timeout in {operation}; new calls were blocked for safety."
                 });
                 throw new TimeoutException(
-                    $"{operation} não retornou em {_nativeCallTimeoutMs} ms.");
+                    $"{operation} did not return within {_nativeCallTimeoutMs} ms.");
             }
 
             var result = await nativeTask.ConfigureAwait(false);
@@ -467,12 +467,12 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
                         _setHmdRumble(0);
                         return true;
                     },
-                    "Rumble OFF no encerramento",
+                    "Rumble OFF during shutdown",
                     CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                _logger.Warning($"Falha ao enviar OFF no encerramento: {ex.Message}");
+                _logger.Warning($"Failed to send OFF during shutdown: {ex.Message}");
             }
         }
 
@@ -491,7 +491,7 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
             }
             catch (Exception ex)
             {
-                _logger.Warning($"Falha ao desinicializar a C API: {ex.Message}");
+                _logger.Warning($"Failed to deinitialize the C API: {ex.Message}");
             }
         }
 
@@ -505,8 +505,8 @@ public sealed class Psvr2ToolkitClient : IHmdRumbleDevice
         else if (_nativeCallTimedOut)
         {
             _logger.Warning(
-                "A DLL permaneceu carregada até o fim do processo porque uma chamada "
-                + "nativa pode ainda estar em execução.");
+                "The DLL remained loaded until process exit because a native call may "
+                + "still be running.");
         }
 
         _nativeGate.Dispose();

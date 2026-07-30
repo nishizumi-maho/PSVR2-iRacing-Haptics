@@ -91,12 +91,14 @@ public static class CalibrationAnalyzer
 
     private static IReadOnlySet<HapticEventKind> ExpectedKinds(string marker)
     {
-        if (marker.Contains("zebra", StringComparison.OrdinalIgnoreCase))
+        if (marker.Contains("kerb", StringComparison.OrdinalIgnoreCase)
+            || marker.Contains("zebra", StringComparison.OrdinalIgnoreCase))
         {
             return new HashSet<HapticEventKind> { HapticEventKind.StrongKerb };
         }
 
-        if (marker.Contains("pouso", StringComparison.OrdinalIgnoreCase))
+        if (marker.Contains("landing", StringComparison.OrdinalIgnoreCase)
+            || marker.Contains("pouso", StringComparison.OrdinalIgnoreCase))
         {
             return new HashSet<HapticEventKind>
             {

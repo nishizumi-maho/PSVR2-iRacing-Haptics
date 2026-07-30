@@ -20,8 +20,7 @@ public sealed class ImpactDetector
             + (telemetry.IncidentIncreased ? 0.65 : 0));
 
         var diagnostics = telemetry with { ImpactScore = score };
-        if (!settings.Enabled
-            || !telemetry.Frame.IsDriverInCar
+        if (!telemetry.Frame.IsDriverInCar
             || telemetry.TimeInCarMilliseconds < settings.WarmupMs
             || telemetry.Frame.SpeedMps < settings.MinimumSpeedMps)
         {
@@ -104,12 +103,12 @@ public sealed class ImpactDetector
             };
 
         var reason =
-            $"impulso horizontal={telemetry.HorizontalImpulseG:F2} g; "
+            $"horizontal impulse={telemetry.HorizontalImpulseG:F2} g; "
             + $"jerk={telemetry.HorizontalJerkGPerSec:F1} g/s; "
-            + $"desaceleração={telemetry.SpeedDecelerationG:F2} g; "
-            + $"angular={telemetry.AngularRateMagnitude:F2} rad/s; "
-            + $"incidente={(telemetry.IncidentIncreased ? "subiu" : "estável")}; "
-            + $"direção={DirectionText(direction)}";
+            + $"deceleration={telemetry.SpeedDecelerationG:F2} g; "
+            + $"angular rate={telemetry.AngularRateMagnitude:F2} rad/s; "
+            + $"incident={(telemetry.IncidentIncreased ? "increased" : "stable")}; "
+            + $"direction={DirectionText(direction)}";
 
         _lastEventAt = telemetry.Frame.Timestamp;
         _armed = rollover;
@@ -180,9 +179,9 @@ public sealed class ImpactDetector
     private static string DirectionText(ImpactDirection direction) => direction switch
     {
         ImpactDirection.Lateral => "lateral",
-        ImpactDirection.Front => "frontal",
-        ImpactDirection.Rear => "traseira",
-        ImpactDirection.Rollover => "capotamento",
-        _ => "indeterminada"
+        ImpactDirection.Front => "front",
+        ImpactDirection.Rear => "rear",
+        ImpactDirection.Rollover => "rollover",
+        _ => "undetermined"
     };
 }

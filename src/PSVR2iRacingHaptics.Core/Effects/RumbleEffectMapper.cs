@@ -29,7 +29,7 @@ public sealed class RumbleEffectMapper
         int pulseCount,
         int gapMs) =>
         FromPattern(
-            "Teste manual",
+            "Manual test",
             110,
             new EffectPatternSettings
             {
@@ -69,14 +69,14 @@ public sealed class RumbleEffectMapper
 
     private static string EventName(DetectedHapticEvent detected) => detected.Kind switch
     {
-        HapticEventKind.LightImpact => "Batida leve",
-        HapticEventKind.MediumImpact => "Batida média",
-        HapticEventKind.StrongImpact => "Batida forte",
-        HapticEventKind.RolloverImpact => "Impacto em capotamento",
-        HapticEventKind.StrongKerb => "Zebra forte",
-        HapticEventKind.WheelDrop => "Queda de roda",
-        HapticEventKind.Landing => "Pouso do carro",
-        HapticEventKind.SevereVerticalCompression => "Compressão vertical severa",
+        HapticEventKind.LightImpact => "Light impact",
+        HapticEventKind.MediumImpact => "Medium impact",
+        HapticEventKind.StrongImpact => "Strong impact",
+        HapticEventKind.RolloverImpact => "Rollover impact",
+        HapticEventKind.StrongKerb => "Strong kerb",
+        HapticEventKind.WheelDrop => "Wheel drop",
+        HapticEventKind.Landing => "Car landing",
+        HapticEventKind.SevereVerticalCompression => "Severe vertical compression",
         _ => detected.Kind.ToString()
     };
 }
