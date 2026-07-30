@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1 — 2026-07-30
+
+- Fixed the 1.1.0 launch regression caused by assigning an invalid telemetry
+  editor splitter distance before WinForms had laid out the control.
+- Made the telemetry editor choose a safe splitter distance from its real
+  client width while preserving the preferred trigger-list width.
+- Added a top-level startup failure report at `startup-crash.log`, with a
+  temporary-directory fallback if the normal log directory is unavailable.
+- Added a Windows-only startup smoke test that creates the complete main window
+  without PSVR2 Toolkit or iRacing and verifies early-failure diagnostics.
+
 ## 1.1.0 — 2026-07-30
 
 - Added profile-owned custom telemetry triggers with raw and derived iRacing
