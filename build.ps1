@@ -27,15 +27,24 @@ if (-not $sdkVersion.StartsWith("8.")) {
 
 Write-Host "Restoring..."
 dotnet restore $solution --disable-parallel -m:1
+if ($LASTEXITCODE -ne 0) {
+    throw "Solution restore failed."
+}
 
 $selfContained = -not $FrameworkDependent
 if ($selfContained) {
     Write-Host "Restoring the $Runtime runtime pack..."
     dotnet restore $appProject -r $Runtime --disable-parallel -m:1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Runtime-pack restore failed."
+    }
 }
 
 Write-Host "Building..."
 dotnet build $solution -c $Configuration --no-restore -m:1
+if ($LASTEXITCODE -ne 0) {
+    throw "Build failed."
+}
 
 Write-Host "Running tests..."
 dotnet run --project $testProject -c $Configuration --no-build
@@ -58,6 +67,9 @@ dotnet publish $appProject `
     -p:PublishSingleFile=false `
     -p:PublishTrimmed=false `
     -o $publishDir
+if ($LASTEXITCODE -ne 0) {
+    throw "Publish failed."
+}
 
 $executablePath = Join-Path $publishDir "PSVR2iRacingHaptics.exe"
 if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf)) {

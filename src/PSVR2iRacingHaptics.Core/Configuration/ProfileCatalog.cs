@@ -74,6 +74,7 @@ public static class ProfileCatalog
             profile.Configuration.Impacts ??= new ImpactSettings();
             profile.Configuration.Vertical ??= new VerticalImpactSettings();
             profile.Configuration.Incidents ??= new IncidentSettings();
+            profile.Configuration.Triggers ??= new TelemetryTriggerSettings();
             profile.Configuration.Effects ??= new EffectSettings();
         }
 
@@ -274,6 +275,7 @@ public static class ProfileCatalog
             Impacts = Clone(settings.Impacts),
             Vertical = Clone(settings.Vertical),
             Incidents = Clone(settings.Incidents),
+            Triggers = Clone(settings.Triggers),
             Effects = Clone(settings.Effects)
         };
 
@@ -284,6 +286,7 @@ public static class ProfileCatalog
         settings.Impacts = Clone(configuration.Impacts);
         settings.Vertical = Clone(configuration.Vertical);
         settings.Incidents = Clone(configuration.Incidents);
+        settings.Triggers = Clone(configuration.Triggers);
         settings.Effects = Clone(configuration.Effects);
     }
 

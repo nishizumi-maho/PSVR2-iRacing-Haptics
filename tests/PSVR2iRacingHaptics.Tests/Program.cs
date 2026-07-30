@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using PSVR2iRacingHaptics.Core.Abstractions;
 using PSVR2iRacingHaptics.Core.Configuration;
 using PSVR2iRacingHaptics.Core.Detection;
@@ -66,6 +67,27 @@ internal static class Program
         ("Calibration matches markers to detections", CalibrationMatchesDetection),
         ("Calibration proposes a bounded missed-event adjustment", CalibrationRecommendsForMissedEvent),
         ("Incident markers do not alter physical thresholds", CalibrationLeavesIncidentThresholdsAlone),
+        ("Custom telemetry triggers persist in profiles", CustomTriggersPersist),
+        ("Raw telemetry channels are available to trigger rules", TriggerReadsRawChannels),
+        ("Additive custom trigger emits its configured event", AdditiveTriggerFires),
+        ("Custom trigger AND and OR modes are deterministic", TriggerMatchModesWork),
+        ("Custom trigger hold and release prevent chatter", TriggerHoldAndReleaseWork),
+        ("Missing optional signals follow the configured policy", TriggerMissingSignalPolicyWorks),
+        ("Replacement trigger suppresses the built-in event", ReplacementTriggerSuppressesBuiltIn),
+        ("Empty replacement rule cannot suppress built-in detection", EmptyReplacementIsSafe),
+        ("Gate trigger requires a matching built-in event", GateTriggerRequiresBuiltIn),
+        ("Directional gate recognizes built-in impact direction", DirectionalGateUsesImpactDirection),
+        ("Custom trigger can override its rumble pattern", TriggerEffectOverrideWorks),
+        ("Live iRacing replay cannot emit custom haptics", LiveReplayCannotFireTrigger),
+        ("Replay calibration evaluates custom trigger statistics", ReplayCalibrationEvaluatesTriggers),
+        ("Circular buffer writes preceding telemetry and a marker", CircularBufferWritesSnapshot),
+        ("Profile packages round-trip as user profiles", ProfilePackageRoundTrip),
+        ("Physical comfort calibration produces bounded guidance", PhysicalCalibrationCompletes),
+        ("Physical calibration does not invent a comfortable range", PhysicalCalibrationNoRange),
+        ("Physical calibration requires a clear duration", PhysicalCalibrationNeedsDuration),
+        ("Diagnostic redaction removes Windows user paths", DiagnosticRedactionWorks),
+        ("Diagnostic bundle contains only reviewed support data", DiagnosticBundleWorks),
+        ("Input defaults contain every action exactly once", InputDefaultsAreComplete),
         ("Missing Toolkit DLL does not crash", MissingToolkitDoesNotCrash),
         ("Missing iRacing does not crash", MissingIRacingDoesNotCrash)
     ];
@@ -1098,6 +1120,719 @@ internal static class Program
         }
     }
 
+    private static async Task CustomTriggersPersist()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            var service = new SettingsService(path);
+            var settings = ProfileCatalog.Create("Default");
+            settings.Triggers.Enabled = false;
+            settings.Triggers.CustomTriggers.Add(new CustomTelemetryTrigger
+            {
+                Name = "Raw longitudinal hit",
+                TargetEvent = HapticEventKind.FrontImpact,
+                Conditions =
+                [
+                    new TelemetryTriggerCondition
+                    {
+                        Signal = TelemetrySignal.LongAccelMps2,
+                        Comparison = TriggerComparison.LessThanOrEqual,
+                        Value = -18
+                    }
+                ]
+            });
+            await service.SaveAsync(settings);
+            var loaded = await service.LoadAsync();
+            False(loaded.Triggers.Enabled);
+            var trigger = loaded.Triggers.CustomTriggers.Single();
+            Equal("Raw longitudinal hit", trigger.Name);
+            Equal(HapticEventKind.FrontImpact, trigger.TargetEvent);
+            Equal(TelemetrySignal.LongAccelMps2, trigger.Conditions[0].Signal);
+            Equal(1, ProfileCatalog.ActiveProfile(loaded)
+                .Configuration.Triggers.CustomTriggers.Count);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static Task TriggerReadsRawChannels()
+    {
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(DateTimeOffset.UtcNow, 1) with
+            {
+                LatAccelMps2 = -12.5f,
+                LongAccelMps2 = 7.25f,
+                VertAccelMps2 = 19.5f
+            }
+        };
+        Near(
+            -12.5,
+            TelemetryTriggerEngine.ReadSignal(
+                telemetry,
+                TelemetrySignal.LatAccelMps2)!.Value,
+            0.001);
+        Near(
+            7.25,
+            TelemetryTriggerEngine.ReadSignal(
+                telemetry,
+                TelemetrySignal.LongAccelMps2)!.Value,
+            0.001);
+        Near(
+            19.5,
+            TelemetryTriggerEngine.ReadSignal(
+                telemetry,
+                TelemetrySignal.VertAccelMps2)!.Value,
+            0.001);
+        return Task.CompletedTask;
+    }
+
+    private static Task AdditiveTriggerFires()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(timestamp, 2) with { LatAccelMps2 = 6 },
+            HorizontalImpulseG = 0.8
+        };
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "User side hit",
+            TargetEvent = HapticEventKind.SideImpact,
+            SourceMode = TriggerSourceMode.Additive,
+            CooldownMilliseconds = 0,
+            RequireReleaseBeforeRetrigger = false,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.LatAccelMps2,
+                    Comparison = TriggerComparison.GreaterThanOrEqual,
+                    UseAbsoluteValue = true,
+                    Value = 5
+                }
+            ]
+        };
+        var result = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            Array.Empty<DetectedHapticEvent>());
+        var detected = result.Candidates.Single();
+        Equal(HapticEventKind.SideImpact, detected.Kind);
+        True(detected.IsCustomTrigger);
+        Equal(trigger.Id, detected.TriggerId!);
+        True(result.Evaluations.Single().Fired);
+        return Task.CompletedTask;
+    }
+
+    private static Task ReplacementTriggerSuppressesBuiltIn()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(timestamp, 2)
+        };
+        var builtIn = TestEvent(
+            timestamp,
+            HapticEventKind.LightImpact,
+            telemetry);
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Impossible replacement",
+            TargetEvent = HapticEventKind.LightImpact,
+            SourceMode = TriggerSourceMode.ReplaceBuiltIn,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.SpeedMps,
+                    Comparison = TriggerComparison.GreaterThan,
+                    Value = 200
+                }
+            ]
+        };
+        var result = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            [builtIn]);
+        Equal(0, result.Candidates.Count);
+        True(result.Evaluations.Single().SuppressesBuiltIn);
+        False(result.Evaluations.Single().ConditionsMatched);
+        return Task.CompletedTask;
+    }
+
+    private static Task TriggerMatchModesWork()
+    {
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(DateTimeOffset.UtcNow, 1) with
+            {
+                LatAccelMps2 = -10,
+                SpeedMps = 2
+            }
+        };
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "AND / OR test",
+            CooldownMilliseconds = 0,
+            RequireReleaseBeforeRetrigger = false,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.LatAccelMps2,
+                    Comparison = TriggerComparison.BetweenInclusive,
+                    UseAbsoluteValue = true,
+                    Value = 8,
+                    SecondValue = 12
+                },
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.SpeedMps,
+                    Comparison = TriggerComparison.GreaterThan,
+                    Value = 100
+                }
+            ]
+        };
+        var all = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            Array.Empty<DetectedHapticEvent>());
+        Equal(0, all.Candidates.Count);
+        False(all.Evaluations.Single().ConditionsMatched);
+
+        trigger.MatchMode = TriggerMatchMode.AnyCondition;
+        var any = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            Array.Empty<DetectedHapticEvent>());
+        Equal(1, any.Candidates.Count);
+        True(any.Evaluations.Single().ConditionsMatched);
+        return Task.CompletedTask;
+    }
+
+    private static Task TriggerHoldAndReleaseWork()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Stateful trigger",
+            HoldMilliseconds = 100,
+            CooldownMilliseconds = 0,
+            RequireReleaseBeforeRetrigger = true,
+            ReleaseMilliseconds = 50,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.LatAccelMps2,
+                    Comparison = TriggerComparison.GreaterThanOrEqual,
+                    Value = 5
+                }
+            ]
+        };
+        var settings = new TelemetryTriggerSettings { CustomTriggers = [trigger] };
+        var engine = new TelemetryTriggerEngine();
+
+        TriggerEngineResult Evaluate(int milliseconds, float acceleration) =>
+            engine.Evaluate(
+                new ProcessedTelemetry
+                {
+                    Frame = ValidFrame(
+                        start.AddMilliseconds(milliseconds),
+                        milliseconds + 1) with
+                    {
+                        LatAccelMps2 = acceleration
+                    }
+                },
+                settings,
+                Array.Empty<DetectedHapticEvent>());
+
+        False(Evaluate(0, 8).Evaluations.Single().Fired);
+        True(Evaluate(100, 8).Evaluations.Single().Fired);
+        False(Evaluate(120, 8).Evaluations.Single().Fired);
+        False(Evaluate(130, 0).Evaluations.Single().Fired);
+        False(Evaluate(190, 0).Evaluations.Single().Fired);
+        False(Evaluate(200, 8).Evaluations.Single().Fired);
+        True(Evaluate(300, 8).Evaluations.Single().Fired);
+        return Task.CompletedTask;
+    }
+
+    private static Task TriggerMissingSignalPolicyWorks()
+    {
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(DateTimeOffset.UtcNow, 1) with
+            {
+                LfShockVelocityMps = null
+            }
+        };
+        var condition = new TelemetryTriggerCondition
+        {
+            Signal = TelemetrySignal.LfShockVelocityMps,
+            Comparison = TriggerComparison.GreaterThan,
+            Value = 0.5,
+            MissingSignalBehavior = MissingSignalBehavior.FailCondition
+        };
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Optional suspension",
+            CooldownMilliseconds = 0,
+            Conditions = [condition]
+        };
+        var failed = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            Array.Empty<DetectedHapticEvent>());
+        Equal(0, failed.Candidates.Count);
+
+        condition.MissingSignalBehavior = MissingSignalBehavior.PassCondition;
+        var passed = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            Array.Empty<DetectedHapticEvent>());
+        Equal(1, passed.Candidates.Count);
+        True(passed.Evaluations.Single().Conditions[0].Matched);
+        return Task.CompletedTask;
+    }
+
+    private static Task EmptyReplacementIsSafe()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(timestamp, 1)
+        };
+        var builtIn = TestEvent(
+            timestamp,
+            HapticEventKind.LightImpact,
+            telemetry);
+        var empty = new CustomTelemetryTrigger
+        {
+            Name = "Recovered empty replacement",
+            SourceMode = TriggerSourceMode.ReplaceBuiltIn
+        };
+        var result = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [empty] },
+            [builtIn]);
+        Equal(1, result.Candidates.Count);
+        False(result.Candidates[0].IsCustomTrigger);
+        Equal(0, result.Evaluations.Count);
+        return Task.CompletedTask;
+    }
+
+    private static Task GateTriggerRequiresBuiltIn()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Speed-gated impact",
+            TargetEvent = HapticEventKind.LightImpact,
+            SourceMode = TriggerSourceMode.GateBuiltIn,
+            CooldownMilliseconds = 0,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.SpeedMps,
+                    Comparison = TriggerComparison.GreaterThanOrEqual,
+                    Value = 10
+                }
+            ]
+        };
+        var settings = new TelemetryTriggerSettings { CustomTriggers = [trigger] };
+        var engine = new TelemetryTriggerEngine();
+        var first = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(timestamp, 1)
+        };
+        var withoutBuiltIn = engine.Evaluate(
+            first,
+            settings,
+            Array.Empty<DetectedHapticEvent>());
+        Equal(0, withoutBuiltIn.Candidates.Count);
+        True(withoutBuiltIn.Evaluations.Single().ConditionsMatched);
+        False(withoutBuiltIn.Evaluations.Single().BuiltInMatched);
+
+        var second = first with
+        {
+            Frame = first.Frame with
+            {
+                Timestamp = timestamp.AddMilliseconds(16),
+                Sequence = 2
+            }
+        };
+        var withBuiltIn = engine.Evaluate(
+            second,
+            settings,
+            [TestEvent(second.Frame.Timestamp, HapticEventKind.LightImpact, second)]);
+        Equal(1, withBuiltIn.Candidates.Count);
+        True(withBuiltIn.Candidates[0].IsCustomTrigger);
+        return Task.CompletedTask;
+    }
+
+    private static Task TriggerEffectOverrideWorks()
+    {
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Distinct feel",
+            TargetEvent = HapticEventKind.SideImpact,
+            UseCustomEffect = true,
+            CustomEffect = new EffectPatternSettings
+            {
+                FrequencyHz = 23,
+                DurationMs = 170,
+                PulseCount = 2,
+                GapMs = 45
+            },
+            Conditions =
+            [
+                new TelemetryTriggerCondition()
+            ]
+        };
+        var detected = TestEvent(
+            DateTimeOffset.UtcNow,
+            HapticEventKind.SideImpact,
+            new ProcessedTelemetry()) with
+        {
+            IsCustomTrigger = true,
+            TriggerId = trigger.Id,
+            TriggerName = trigger.Name
+        };
+        var effect = new RumbleEffectMapper().Map(
+            detected,
+            new EffectSettings(),
+            new IncidentSettings(),
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] });
+        Equal((byte)23, effect.Pulses[0].FrequencyHz);
+        Equal(2, effect.Pulses.Count);
+        Equal(170, effect.Pulses[0].DurationMs);
+        return Task.CompletedTask;
+    }
+
+    private static Task DirectionalGateUsesImpactDirection()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(timestamp, 1) with { LatAccelMps2 = 12 }
+        };
+        var builtIn = TestEvent(
+            timestamp,
+            HapticEventKind.LightImpact,
+            telemetry) with
+        {
+            Direction = ImpactDirection.Lateral
+        };
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Lateral confirmation",
+            TargetEvent = HapticEventKind.SideImpact,
+            SourceMode = TriggerSourceMode.GateBuiltIn,
+            CooldownMilliseconds = 0,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.LatAccelMps2,
+                    Comparison = TriggerComparison.GreaterThanOrEqual,
+                    UseAbsoluteValue = true,
+                    Value = 10
+                }
+            ]
+        };
+        var result = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            [builtIn]);
+        var detected = result.Candidates.Single();
+        Equal(HapticEventKind.SideImpact, detected.Kind);
+        Equal(ImpactDirection.Lateral, detected.Direction);
+        True(result.Evaluations.Single().BuiltInMatched);
+        return Task.CompletedTask;
+    }
+
+    private static Task LiveReplayCannotFireTrigger()
+    {
+        var telemetry = new ProcessedTelemetry
+        {
+            Frame = ValidFrame(DateTimeOffset.UtcNow, 1) with
+            {
+                IsReplayPlaying = true,
+                LatAccelMps2 = 30
+            }
+        };
+        var trigger = new CustomTelemetryTrigger
+        {
+            Name = "Replay safety check",
+            CooldownMilliseconds = 0,
+            Conditions =
+            [
+                new TelemetryTriggerCondition
+                {
+                    Signal = TelemetrySignal.LatAccelMps2,
+                    Comparison = TriggerComparison.GreaterThanOrEqual,
+                    Value = 20
+                }
+            ]
+        };
+        var result = new TelemetryTriggerEngine().Evaluate(
+            telemetry,
+            new TelemetryTriggerSettings { CustomTriggers = [trigger] },
+            Array.Empty<DetectedHapticEvent>());
+        Equal(0, result.Candidates.Count);
+        Equal(0, result.Evaluations.Count);
+        return Task.CompletedTask;
+    }
+
+    private static async Task ReplayCalibrationEvaluatesTriggers()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "iracing-replay.jsonl");
+            var timestamp = DateTimeOffset.UtcNow;
+            await using var recorder = new TelemetryRecorder();
+            await recorder.StartAsync(path);
+            await recorder.RecordFrameAsync(ValidFrame(timestamp, 1) with
+            {
+                IsReplayPlaying = true,
+                LatAccelMps2 = 0
+            });
+            await recorder.RecordFrameAsync(ValidFrame(
+                timestamp.AddMilliseconds(20),
+                2) with
+            {
+                IsReplayPlaying = true,
+                LatAccelMps2 = 30
+            });
+            await recorder.MarkAsync("Impact");
+            await recorder.StopAsync();
+
+            var settings = new AppSettings();
+            settings.Triggers.Enabled = false;
+            settings.Triggers.CustomTriggers.Add(new CustomTelemetryTrigger
+            {
+                Name = "Replay raw acceleration",
+                TargetEvent = HapticEventKind.LightImpact,
+                CooldownMilliseconds = 0,
+                Conditions =
+                [
+                    new TelemetryTriggerCondition
+                    {
+                        Signal = TelemetrySignal.LatAccelMps2,
+                        Comparison = TriggerComparison.GreaterThanOrEqual,
+                        UseAbsoluteValue = true,
+                        Value = 20
+                    }
+                ]
+            });
+            var report = await CalibrationAnalyzer.AnalyzeAsync(path, settings);
+            var summary = report.TriggerSummaries.Single();
+            Equal(1, summary.FiredCount);
+            Equal(2, summary.FrameCount);
+            Near(30, summary.Conditions[0].Maximum!.Value, 0.001);
+            True(summary.Conditions[0].MarkerWindowMaximum.HasValue);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task CircularBufferWritesSnapshot()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "recent.jsonl");
+            var timestamp = DateTimeOffset.UtcNow;
+            var buffer = new TelemetryCircularBuffer(retentionSeconds: 10);
+            buffer.AddFrame(ValidFrame(timestamp, 1));
+            buffer.AddFrame(ValidFrame(timestamp.AddSeconds(5), 2));
+            buffer.AddFrame(ValidFrame(timestamp.AddSeconds(11), 3));
+            var count = await buffer.SaveSnapshotAsync(path, "captured impact");
+            Equal(2, count);
+            var entries = new List<TelemetryLogEntry>();
+            await foreach (var entry in TelemetryReplayClient.ReadEntriesAsync(path))
+            {
+                entries.Add(entry);
+            }
+            Equal(3, entries.Count);
+            Equal(2L, entries[0].Frame!.Sequence);
+            Equal(3L, entries[1].Frame!.Sequence);
+            Equal("captured impact", entries[2].Marker!);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task ProfilePackageRoundTrip()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "profile.psvr2haptics.json");
+            var settings = ProfileCatalog.Create("Default");
+            var source = ProfileCatalog.AddProfile(settings, "My GT profile");
+            source.Configuration.Triggers.CustomTriggers.Add(
+                new CustomTelemetryTrigger
+                {
+                    Name = "Imported trigger",
+                    Conditions = [new TelemetryTriggerCondition()]
+                });
+            await ProfilePackageService.ExportAsync(source, path, "1.1.0");
+            var preview = await ProfilePackageService.PreviewAsync(path);
+            Equal("My GT profile", preview.Name);
+            Equal(1, preview.CustomTriggerCount);
+            var imported = await ProfilePackageService.ImportAsync(settings, path);
+            False(imported.IsBuiltIn);
+            True(imported.Name.StartsWith("My GT profile", StringComparison.Ordinal));
+            Equal(1, imported.Configuration.Triggers.CustomTriggers.Count);
+            False(imported.Id.Equals(source.Id, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static Task PhysicalCalibrationCompletes()
+    {
+        var session = new PhysicalCalibrationSession();
+        while (session.Phase != PhysicalCalibrationPhase.Completed)
+        {
+            session.Record(RumblePerceptionRating.Clear);
+        }
+        var settings = session.ToSettings();
+        True(settings.Completed);
+        True(settings.UsableRangeFound);
+        True(settings.MinimumClearlyPerceptibleFrequencyHz is >= 8 and <= 25);
+        True(settings.PreferredFrequencyHz
+            >= settings.MinimumClearlyPerceptibleFrequencyHz);
+        True(settings.MaximumComfortableFrequencyHz
+            >= settings.PreferredFrequencyHz);
+        True(settings.PreferredDurationMs
+            >= settings.MinimumClearlyPerceptibleDurationMs);
+        return Task.CompletedTask;
+    }
+
+    private static Task PhysicalCalibrationNoRange()
+    {
+        var session = new PhysicalCalibrationSession();
+        session.Record(RumblePerceptionRating.Uncomfortable);
+        Equal(PhysicalCalibrationPhase.Completed, session.Phase);
+        var settings = session.ToSettings();
+        True(settings.Completed);
+        False(settings.UsableRangeFound);
+        Equal((byte)0, settings.PreferredFrequencyHz);
+        Equal(0, settings.PreferredDurationMs);
+        return Task.CompletedTask;
+    }
+
+    private static Task PhysicalCalibrationNeedsDuration()
+    {
+        var session = new PhysicalCalibrationSession();
+        while (session.Phase == PhysicalCalibrationPhase.Frequency)
+        {
+            session.Record(RumblePerceptionRating.Clear);
+        }
+        while (session.Phase == PhysicalCalibrationPhase.Duration)
+        {
+            session.Record(RumblePerceptionRating.NotFelt);
+        }
+        var settings = session.ToSettings();
+        False(settings.UsableRangeFound);
+        Equal((byte)0, settings.PreferredFrequencyHz);
+        Equal(0, settings.PreferredDurationMs);
+        return Task.CompletedTask;
+    }
+
+    private static Task DiagnosticRedactionWorks()
+    {
+        var input =
+            "DLL=C:\\Users\\Alice\\Toolkit\\psvr2_toolkit_capi.dll\n"
+            + "Other=C:\\Program Files\\Steam";
+        var redacted = DiagnosticBundleService.Redact(input);
+        False(redacted.Contains(@"C:\Users\Alice", StringComparison.OrdinalIgnoreCase));
+        True(redacted.Contains(
+            @"%USERPROFILE%\Toolkit",
+            StringComparison.Ordinal));
+        True(redacted.Contains(
+            @"C:\Program Files\Steam",
+            StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    private static async Task DiagnosticBundleWorks()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var paths = new AppPaths(
+                Path.Combine(directory, "data"),
+                Path.Combine(directory, "data", "settings.json"),
+                Path.Combine(directory, "data", "logs"),
+                Path.Combine(directory, "data", "recordings"),
+                IsPortable: true);
+            paths.EnsureDirectories();
+            await File.WriteAllTextAsync(
+                Path.Combine(paths.LogsDirectory, "latest.log"),
+                @"DLL=C:\Users\Alice\Toolkit\psvr2_toolkit_capi.dll");
+            var recording = Path.Combine(paths.RecordingsDirectory, "sample.jsonl");
+            await File.WriteAllTextAsync(recording, "{\"entryType\":\"marker\"}");
+            var output = Path.Combine(directory, "diagnostics.zip");
+            var result = await DiagnosticBundleService.CreateAsync(
+                output,
+                paths,
+                new AppSettings(),
+                "1.1.0",
+                recording);
+            True(result.IncludedRecording);
+            Equal(1, result.LogFileCount);
+
+            using var archive = ZipFile.OpenRead(output);
+            var names = archive.Entries.Select(entry => entry.FullName).ToArray();
+            True(names.Contains("manifest.json", StringComparer.Ordinal));
+            True(names.Contains("settings.redacted.json", StringComparer.Ordinal));
+            True(names.Contains("logs/latest.log", StringComparer.Ordinal));
+            True(names.Contains(
+                "recording/sample.jsonl",
+                StringComparer.Ordinal));
+            False(names.Any(name =>
+                name.EndsWith(
+                    "psvr2_toolkit_capi.dll",
+                    StringComparison.OrdinalIgnoreCase)));
+            var logEntry = archive.GetEntry("logs/latest.log")
+                ?? throw new InvalidOperationException("Redacted log entry is missing.");
+            using var reader = new StreamReader(logEntry.Open());
+            var log = await reader.ReadToEndAsync();
+            False(log.Contains("Alice", StringComparison.OrdinalIgnoreCase));
+            True(log.Contains("%USERPROFILE%", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static Task InputDefaultsAreComplete()
+    {
+        var bindings = InputSettings.CreateDefaults();
+        Equal(Enum.GetValues<InputAction>().Length, bindings.Count);
+        Equal(bindings.Count, bindings.Select(binding => binding.Action).Distinct().Count());
+        True(bindings.Single(binding =>
+            binding.Action == InputAction.EmergencyStop).KeyboardEnabled);
+        return Task.CompletedTask;
+    }
+
     private static async Task MissingToolkitDoesNotCrash()
     {
         await using var client = new Psvr2ToolkitClient(new SafetySettings());
@@ -1166,6 +1901,20 @@ internal static class Program
             IncidentType = type,
             HasRelatedPhysicalEvent = relatedPhysicalEvent
         };
+
+    private static DetectedHapticEvent TestEvent(
+        DateTimeOffset timestamp,
+        HapticEventKind kind,
+        ProcessedTelemetry telemetry) =>
+        new(
+            timestamp,
+            kind,
+            EventSeverity.Light,
+            1,
+            60,
+            ImpactDirection.Unknown,
+            "test event",
+            telemetry);
 
     private static RumbleController Controller(SimulatedRumbleDevice device) =>
         new(

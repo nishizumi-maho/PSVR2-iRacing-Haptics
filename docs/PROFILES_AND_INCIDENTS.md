@@ -8,6 +8,7 @@ A profile is a named snapshot of:
 - vertical detector sensitivity, thresholds and cooldown;
 - each collision/vertical/incident output switch;
 - incident evidence, cooldown, duplicate and pattern-basis policy;
+- the custom-trigger engine state and every telemetry trigger;
 - every frequency, duration, pulse-count, gap and tail value.
 
 The master haptics switch, device selection and safety limits are global. This
@@ -17,6 +18,10 @@ Factory profiles can be edited and reset. They cannot be renamed or deleted.
 User profiles can be created from the active values, duplicated, renamed and
 deleted. Deleting a profile also removes its assignment rules; deleting the
 active profile returns to Default.
+
+Profiles can be exported as `*.psvr2haptics.json`. Import validates the package,
+previews its incident/trigger content, creates a new user identity and cannot
+alter the receiving app's global device, safety, input or startup settings.
 
 ## Recommended profile workflow
 

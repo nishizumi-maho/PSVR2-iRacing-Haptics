@@ -27,6 +27,10 @@
 9. Only then compare 80, 120, 160 and 200 ms. Pause between tests and stop if
    the sensation becomes uncomfortable.
 
+Repeat the sequence through **Comfort calibration**. If the test reports that
+no clearly perceptible and comfortable range was found, keep haptics disabled;
+do not substitute an untested default.
+
 If any pulse does not stop:
 
 1. press the emergency stop;
@@ -104,6 +108,35 @@ is confirmed. The current native function may block in that race condition.
 9. Raise a threshold by 0.10–0.20 when normal driving causes false positives.
 10. Change one value at a time and replay the same JSONL after each change.
 11. Tune frequency and duration only after event detection is reliable.
+
+## Custom-trigger and replay safety test
+
+1. Select the simulated rumble device and create an Additive rule using
+   absolute `LatAccelMps2`, a conservative threshold and a minimum-speed
+   condition.
+2. Record clean laps and several controlled events; dry-run the file with
+   **Analyze JSONL**.
+3. Confirm that clean-lap p99 remains below the chosen value and that the marked
+   examples cross it.
+4. Disable the custom-trigger engine and verify that built-in events still
+   appear while the custom evaluation disappears.
+5. Play an iRacing replay while recording. Confirm that no physical command is
+   produced by the live replay.
+6. Analyze that recording and confirm that the recorded replay frames are
+   included in the dry-run statistics.
+7. Select **Replay JSONL** with the real device configured. Confirm that the app
+   warns before any replay-driven physical output.
+8. Return to the simulated device before testing Replace or Gate mode.
+
+## Global-control and circular-buffer test
+
+1. Assign an unused keyboard shortcut and wheel button to emergency stop.
+2. Trigger a manual effect and verify that each binding immediately sends OFF.
+3. Verify toggle-haptics, recording and marker bindings while iRacing has focus.
+4. Keep a 30–60 second circular buffer, reproduce an event and save it from the
+   binding.
+5. Confirm that the saved JSONL contains the preceding frames plus the final
+   marker and can be analyzed.
 
 Do not calibrate in an official race. Suspension and rumble-pitch channels
 vary by car, so repeat the test when changing to a substantially different

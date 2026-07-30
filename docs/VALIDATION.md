@@ -1,4 +1,4 @@
-# Version 1.0.0 validation
+# Version 1.1.0 validation
 
 Date: July 30, 2026.
 
@@ -32,10 +32,14 @@ The packaging script also verifies:
 - neither `psvr2_toolkit_capi.dll` nor a PSVR2 Toolkit executable is bundled;
 - a SHA-256 sidecar is written for the exact portable ZIP.
 
+The 1.1.0 checkpoint contained 480 portable entries. The workflow artifact
+contains the portable ZIP and its SHA-256 sidecar; the release workflow repeats
+the complete build rather than promoting an unverified local package.
+
 ## Automated tests
 
 ```text
-Result: 53/53 tests passed.
+Result: 74/74 tests passed.
 ```
 
 Coverage includes:
@@ -54,6 +58,20 @@ Coverage includes:
   classification, counter decreases and physical duplicate protection;
 - point-based and inferred-type incident waveforms;
 - independent event switches with detection retained while output is disabled;
+- persistence of profile-owned custom telemetry triggers;
+- raw and derived telemetry-signal lookup, including lateral acceleration;
+- AND/OR condition groups, absolute/signed comparisons, missing-signal policy,
+  hold time, cooldown and release/rearm behavior;
+- additive, built-in replacement and built-in gate trigger modes;
+- directional impact gates and per-trigger rumble-pattern overrides;
+- prevention of custom haptics during live iRacing replay;
+- offline replay statistics for custom triggers, including when live custom
+  output is disabled;
+- circular-buffer capture of the telemetry preceding a marker;
+- validated profile-package round trips without machine-global settings;
+- bounded physical comfort calibration and explicit no-range results;
+- redaction and reviewed contents of diagnostic support bundles;
+- complete, unique default keyboard/steering-wheel input actions;
 - effect safety limits, priority, preemption and rejection;
 - mandatory `0 Hz` after completion, cancellation and emergency stop;
 - unavailable Toolkit/iRacing behavior;
@@ -69,6 +87,9 @@ The following remain real-hardware responsibilities:
 - assess perceived sensation and the physical meaning of values called Hz;
 - validate Toolkit behavior if its driver disappears during a native call;
 - tune thresholds across real car/track combinations;
+- verify keyboard and steering-wheel bindings with the user's actual devices;
+- run the physical calibration assistant and confirm that its suggested range
+  remains clear and comfortable for that headset and wearer;
 - evaluate coexistence with any other C API rumble client.
 
 The executable is not Authenticode-signed. The release provides a SHA-256

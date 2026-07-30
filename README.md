@@ -7,6 +7,10 @@ An independent Windows companion app that converts iRacing telemetry into
 PlayStation VR2 headset rumble patterns through the
 [PSVR2 Toolkit](https://github.com/BnuuySolutions/PSVR2Toolkit) C API.
 
+The project icon combines a generic headset visor with haptic-wave marks. Its
+editable SVG source is in `assets/app-icon.svg`; the packaged executable and
+notification-area icon use `assets/app.ico`.
+
 The app does **not bundle, redistribute, modify or replace** PSVR2 Toolkit. It
 does not patch the driver, access USB directly or perform a jailbreak. The C
 API DLL remains part of the Toolkit installation and is loaded from the path
@@ -51,8 +55,9 @@ provided `.sha256` sidecar before running it.
 2. Confirm that the Toolkit driver is active.
 3. Extract the entire portable ZIP to a normal user folder.
 4. Run `PSVR2iRacingHaptics.exe`.
-5. Open **Manual test**, select `PSVR2 Toolkit (real hardware)` and begin with
-   12 Hz for 120 ms.
+5. Open **Comfort calibration**, select `PSVR2 Toolkit (real hardware)` on
+   **Manual test**, and rate the guided steps as `Not felt`, `Clear` or
+   `Uncomfortable`.
 6. Use **STOP ALL RUMBLE NOW** if anything behaves unexpectedly.
 7. Open **Effects** and enable only the event categories you want to feel.
 8. Start iRacing and enter the car. Status should show `iRacing connected` and
@@ -169,6 +174,60 @@ name, class and IDs plus the circuit's `TrackName`, display name, ID and
 configuration. These values are used only for display and optional profile
 assignment rules.
 
+## Fully customizable telemetry triggers
+
+The built-in collision and vertical detectors remain the safe starting point,
+but they are no longer the only way to recognize an event. Every profile can
+store any number of custom triggers. A trigger chooses an output event and one
+or more conditions over raw or derived telemetry.
+
+Available signals include:
+
+- raw `LatAccel`, `LongAccel` and `VertAccel`, speed, three-axis velocity,
+  orientation and angular rates;
+- brake, throttle, gear, RPM, wheel speeds, shock deflection/velocity and tire
+  rumble-pitch channels;
+- incident count, exact point delta, track surface and material;
+- smoothed acceleration, slow baselines, axis deltas and axis jerk;
+- horizontal/vertical impulse, jerk in g/s, deceleration, suspension peak and
+  asymmetry, angular-rate magnitude, built-in collision score and vertical
+  score;
+- boolean context such as replay playback, wheel-lock evidence and recent
+  braking.
+
+Each condition can use the signed or absolute value and supports `>`, `>=`, `<`,
+`<=`, inclusive between/outside, equal and not-equal comparisons. Missing
+optional telemetry can fail or pass that condition explicitly. Conditions
+within a trigger use either AND or OR; multiple triggers targeting the same
+event provide additional OR branches.
+
+Trigger interaction modes are:
+
+- **Additive** — retain the built-in detector and also allow this trigger;
+- **Replace built-in** — suppress the built-in event of the same kind and give
+  the custom rule complete control;
+- **Gate built-in** — require both the built-in detector and the custom
+  conditions on the same frame.
+
+The complete custom-trigger engine and each individual trigger can be enabled
+or disabled without deleting any calibration.
+
+Hold time, cooldown, release/rearm time, repeat behavior and priority are
+editable. A trigger normally uses the profile's existing event waveform, but
+can override frequency, duration, pulse count, gap and tail. This keeps
+detection and feel separate while still allowing a completely self-contained
+custom event.
+
+Use **Telemetry triggers → Analyze JSONL** for a dry run. It sends no headset
+command and reports matching/firing counts plus min, median, p95, p99 and the
+range around compatible manual markers for every condition. JSONL recorded
+while an iRacing replay is playing is accepted for offline calibration; live
+iRacing replay never becomes haptic-output eligible merely because recording
+is active.
+
+See [docs/CUSTOM_TRIGGERS.md](docs/CUSTOM_TRIGGERS.md) for signal units,
+examples, rule semantics and a repeatable calibration workflow.
+
 ## Incident haptics
 
 `PlayerCarMyIncidentCount` is a cumulative integer. A positive counter delta is
@@ -239,12 +298,14 @@ detection first, then tune the physical sensation.
 Recommended workflow:
 
 1. On **Effects**, enable only the categories you want.
-2. On **Manual test**, find a comfortable frequency and duration before using
-   live telemetry.
+2. Complete **Comfort calibration** before using live telemetry. It records a
+   perceptible range without treating frequency as intensity.
 3. Apply the **Default** profile.
 4. In an iRacing solo test session, drive two or three clean laps using normal
    braking and ordinary kerbs. The app should remain quiet.
-5. Open **Calibration & simulator** and start a JSONL recording.
+5. Open **Calibration & simulator** and start a JSONL recording. If the event
+   is unpredictable, enable the circular buffer and save the preceding
+   10–300 seconds after it occurs.
 6. Reproduce one clear event at a time. Click `Mark impact`,
    `Mark strong kerb`, `Mark landing`, `Mark 1x`, `Mark 2x` or `Mark 4x`
    immediately after it happens.
@@ -254,9 +315,13 @@ Recommended workflow:
    above its score. Conflicting evidence is never auto-applied.
 9. Incident markers validate counter handling and classification but do not
    change physical thresholds automatically.
-10. Change one value at a time, save, and replay the same JSONL. Watch
-    `Collision score` and `Vertical score` under **Diagnostics**.
-11. Once detection is reliable, tune frequency and duration for comfort.
+10. For custom rules, open **Telemetry triggers**, choose **Analyze JSONL** and
+    compare normal-driving p95/p99 against the marker-window peak. Change one
+    condition at a time and analyze the identical file again.
+11. Change one built-in value at a time, save, and replay the same JSONL. Watch
+    `Collision score`, `Vertical score` and `Custom trigger evaluation` under
+    **Diagnostics**.
+12. Once detection is reliable, tune frequency and duration for comfort.
     Cooldown only controls how soon the same event family can repeat.
 
 Calibration results mean:
@@ -290,7 +355,12 @@ The four resettable factory profiles are:
 Use **Profiles** to create a profile from the current setup, duplicate any
 profile, rename/delete user profiles, or reset a factory profile. Each profile
 stores collision and vertical thresholds, individual event switches, incident
-policy and every event waveform. Factory profiles cannot be renamed or deleted.
+policy, every event waveform and all custom telemetry triggers. Factory profiles
+cannot be renamed or deleted.
+
+Profiles can be exported as versioned `*.psvr2haptics.json` data files. Import
+always shows a preview, creates a new user-profile identity and never changes
+the global device, safety, startup or input settings.
 
 Automatic activation is optional. A rule targets one profile and may contain
 any combination of:
@@ -306,8 +376,10 @@ matches one character, both case-insensitively. Higher priority wins; an equal
 priority prefers the more specific rule and then the rule name for deterministic
 results. If no rule matches, the current profile stays active.
 
-Existing 0.1.x/0.2.0 settings and Portuguese factory-profile names are migrated
-without discarding customized detector/effect values.
+Existing 0.1.x/0.2.0/1.0.0 settings and Portuguese factory-profile names are
+migrated without discarding customized detector/effect values. Version 1.0.0
+profiles receive an empty custom-trigger catalog, so their behavior stays
+unchanged.
 
 See [docs/PROFILES_AND_INCIDENTS.md](docs/PROFILES_AND_INCIDENTS.md) for rule
 examples, incident pattern modes, precedence and troubleshooting.
@@ -326,6 +398,32 @@ examples, incident pattern modes, precedence and troubleshooting.
 - no native operation on the UI thread;
 - light kerbs disabled by default;
 - normal startup without iRacing or PSVR2 Toolkit.
+
+## Controls, diagnostics and desktop behavior
+
+The **Controls** tab assigns global keyboard shortcuts and Windows joystick
+device/button pairs to:
+
+- emergency stop;
+- toggle all haptics;
+- start/stop JSONL recording;
+- save the circular buffer;
+- mark impact, strong kerb, landing, wheel drop or false positive.
+
+The default emergency shortcut is `Ctrl+Shift+F12`. Keyboard registration
+failures are shown when another application owns a combination. Many wheel
+bases expose buttons through the Windows joystick API; otherwise, map a wheel
+button to the selected keyboard shortcut in the wheel software.
+
+The **Logs** tab can create a diagnostic ZIP containing a manifest, redacted
+settings and recent logs. A JSONL recording is included only when explicitly
+selected. User-profile paths and the Windows account name are redacted; review
+the ZIP before sharing it.
+
+The **Application** tab controls notification-area minimization, minimized
+startup, an optional current-user `HKCU\...\Run` entry and optional GitHub
+release checks. No service, scheduled task, silent download or automatic update
+is installed.
 
 ## Logs
 
@@ -349,7 +447,7 @@ The script restores, builds, runs the test executable, publishes a
 self-contained `win-x64` app and creates:
 
 ```text
-build\PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip
+build\PSVR2-iRacing-Haptics-v1.1.0-win-x64-portable.zip
 ```
 
 Run from source on Windows:

@@ -8,12 +8,22 @@ public sealed class RumbleEffectMapper
     public RumbleEffect Map(
         DetectedHapticEvent detected,
         EffectSettings settings,
-        IncidentSettings? incidentSettings = null)
+        IncidentSettings? incidentSettings = null,
+        TelemetryTriggerSettings? triggerSettings = null)
     {
-        var pattern = IsIncident(detected.Kind)
-            && incidentSettings?.PatternBasis == IncidentPatternBasis.InferredType
-                ? PatternForIncidentType(detected.IncidentType, settings)
-                : PatternForKind(detected.Kind, settings);
+        var customTrigger = detected.TriggerId is null
+            ? null
+            : triggerSettings?.CustomTriggers.FirstOrDefault(trigger =>
+                trigger.Enabled
+                && trigger.UseCustomEffect
+                && trigger.Id.Equals(
+                    detected.TriggerId,
+                    StringComparison.OrdinalIgnoreCase));
+        var pattern = customTrigger?.CustomEffect
+            ?? (IsIncident(detected.Kind)
+                && incidentSettings?.PatternBasis == IncidentPatternBasis.InferredType
+                    ? PatternForIncidentType(detected.IncidentType, settings)
+                    : PatternForKind(detected.Kind, settings));
 
         return FromPattern(EventName(detected), detected.Priority, pattern);
     }
@@ -26,6 +36,9 @@ public sealed class RumbleEffectMapper
             HapticEventKind.RolloverImpact => settings.Rollover,
             HapticEventKind.StrongImpact => settings.StrongImpact,
             HapticEventKind.MediumImpact => settings.MediumImpact,
+            HapticEventKind.SideImpact
+                or HapticEventKind.FrontImpact
+                or HapticEventKind.RearImpact => settings.MediumImpact,
             HapticEventKind.LightImpact => settings.LightImpact,
             HapticEventKind.StrongKerb => settings.StrongKerb,
             HapticEventKind.WheelDrop => settings.WheelDrop,
@@ -99,6 +112,9 @@ public sealed class RumbleEffectMapper
         HapticEventKind.LightImpact => "Light impact",
         HapticEventKind.MediumImpact => "Medium impact",
         HapticEventKind.StrongImpact => "Strong impact",
+        HapticEventKind.SideImpact => "Side impact",
+        HapticEventKind.FrontImpact => "Front impact",
+        HapticEventKind.RearImpact => "Rear impact",
         HapticEventKind.RolloverImpact => "Rollover impact",
         HapticEventKind.StrongKerb => "Strong kerb",
         HapticEventKind.WheelDrop => "Wheel drop",

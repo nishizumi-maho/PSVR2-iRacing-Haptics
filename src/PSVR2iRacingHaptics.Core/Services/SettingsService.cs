@@ -127,6 +127,11 @@ public sealed class SettingsService
         settings.Impacts ??= new ImpactSettings();
         settings.Vertical ??= new VerticalImpactSettings();
         settings.Incidents ??= new IncidentSettings();
+        settings.Triggers ??= new TelemetryTriggerSettings();
+        settings.Recording ??= new RecordingSettings();
+        settings.PhysicalCalibration ??= new PhysicalCalibrationSettings();
+        settings.Input ??= new InputSettings();
+        settings.Application ??= new ApplicationBehaviorSettings();
         settings.Safety ??= new SafetySettings();
         settings.Effects ??= new EffectSettings();
         ProfileCatalog.EnsureCatalog(settings);
@@ -135,6 +140,7 @@ public sealed class SettingsService
             settings.Impacts,
             settings.Vertical,
             settings.Incidents,
+            settings.Triggers,
             settings.Effects);
         foreach (var profile in settings.Profiles)
         {
@@ -142,6 +148,7 @@ public sealed class SettingsService
                 profile.Configuration.Impacts,
                 profile.Configuration.Vertical,
                 profile.Configuration.Incidents,
+                profile.Configuration.Triggers,
                 profile.Configuration.Effects);
         }
 
@@ -161,14 +168,90 @@ public sealed class SettingsService
             settings.Safety.NativeCallTimeoutMs,
             200,
             5000);
+        settings.Recording.CircularBufferSeconds = Math.Clamp(
+            settings.Recording.CircularBufferSeconds,
+            10,
+            300);
+        if (settings.PhysicalCalibration.Completed
+            && !settings.PhysicalCalibration.UsableRangeFound)
+        {
+            settings.PhysicalCalibration.MinimumClearlyPerceptibleFrequencyHz = 0;
+            settings.PhysicalCalibration.PreferredFrequencyHz = 0;
+            settings.PhysicalCalibration.MaximumComfortableFrequencyHz = 0;
+            settings.PhysicalCalibration.MinimumClearlyPerceptibleDurationMs = 0;
+            settings.PhysicalCalibration.PreferredDurationMs = 0;
+        }
+        else
+        {
+            settings.PhysicalCalibration.MinimumClearlyPerceptibleFrequencyHz =
+                (byte)Math.Clamp(
+                    settings.PhysicalCalibration.MinimumClearlyPerceptibleFrequencyHz,
+                    (byte)0,
+                    (byte)25);
+            settings.PhysicalCalibration.PreferredFrequencyHz = (byte)Math.Clamp(
+                settings.PhysicalCalibration.PreferredFrequencyHz,
+                settings.PhysicalCalibration.MinimumClearlyPerceptibleFrequencyHz,
+                (byte)25);
+            settings.PhysicalCalibration.MaximumComfortableFrequencyHz =
+                (byte)Math.Clamp(
+                    settings.PhysicalCalibration.MaximumComfortableFrequencyHz,
+                    settings.PhysicalCalibration.PreferredFrequencyHz,
+                    (byte)25);
+            settings.PhysicalCalibration.MinimumClearlyPerceptibleDurationMs =
+                Math.Clamp(
+                    settings.PhysicalCalibration.MinimumClearlyPerceptibleDurationMs,
+                    20,
+                    1000);
+            settings.PhysicalCalibration.PreferredDurationMs = Math.Clamp(
+                settings.PhysicalCalibration.PreferredDurationMs,
+                settings.PhysicalCalibration.MinimumClearlyPerceptibleDurationMs,
+                1000);
+        }
+        ValidateInput(settings.Input);
 
         return settings;
+    }
+
+    private static void ValidateInput(InputSettings input)
+    {
+        input.Bindings ??= [];
+        var defaults = InputSettings.CreateDefaults()
+            .ToDictionary(binding => binding.Action);
+        input.Bindings = Enum.GetValues<InputAction>()
+            .Select(action =>
+                input.Bindings.FirstOrDefault(binding =>
+                    binding is not null && binding.Action == action)
+                ?? defaults[action])
+            .ToList();
+        foreach (var binding in input.Bindings)
+        {
+            binding.VirtualKey = Math.Clamp(binding.VirtualKey, 0, 255);
+            binding.JoystickDeviceId = Math.Clamp(binding.JoystickDeviceId, 0, 15);
+            binding.JoystickButtonNumber = Math.Clamp(
+                binding.JoystickButtonNumber,
+                0,
+                32);
+            var allowedModifiers = KeyboardModifier.Alt
+                | KeyboardModifier.Control
+                | KeyboardModifier.Shift
+                | KeyboardModifier.Windows;
+            binding.KeyboardModifiers &= allowedModifiers;
+            if (binding.VirtualKey == 0)
+            {
+                binding.KeyboardEnabled = false;
+            }
+            if (binding.JoystickButtonNumber == 0)
+            {
+                binding.JoystickEnabled = false;
+            }
+        }
     }
 
     private static void ValidateConfiguration(
         ImpactSettings impacts,
         VerticalImpactSettings vertical,
         IncidentSettings incidents,
+        TelemetryTriggerSettings triggers,
         EffectSettings effects)
     {
         impacts.Sensitivity = Math.Clamp(impacts.Sensitivity, 0.2, 3.0);
@@ -210,6 +293,8 @@ public sealed class SettingsService
             incidents.PatternBasis = IncidentPatternBasis.PointValue;
         }
 
+        ValidateTriggers(triggers);
+
         effects.LightImpact ??= new EffectPatternSettings();
         effects.MediumImpact ??= new EffectPatternSettings();
         effects.StrongImpact ??= new EffectPatternSettings();
@@ -230,17 +315,124 @@ public sealed class SettingsService
 
         foreach (var pattern in EnumeratePatterns(effects))
         {
-            pattern.FrequencyHz = (byte)Math.Clamp(pattern.FrequencyHz, (byte)0, (byte)25);
-            pattern.TailFrequencyHz = (byte)Math.Clamp(
-                pattern.TailFrequencyHz,
-                (byte)0,
-                (byte)25);
-            pattern.DurationMs = Math.Clamp(pattern.DurationMs, 10, 1000);
-            pattern.TailDurationMs = Math.Clamp(pattern.TailDurationMs, 0, 1000);
-            pattern.PulseCount = Math.Clamp(pattern.PulseCount, 1, 8);
-            pattern.GapMs = Math.Clamp(pattern.GapMs, 0, 1000);
+            ValidatePattern(pattern);
         }
     }
+
+    private static void ValidateTriggers(TelemetryTriggerSettings triggers)
+    {
+        triggers.CustomTriggers ??= [];
+        triggers.CustomTriggers = triggers.CustomTriggers
+            .Where(trigger => trigger is not null)
+            .Take(128)
+            .ToList();
+
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var trigger in triggers.CustomTriggers)
+        {
+            trigger.Id = string.IsNullOrWhiteSpace(trigger.Id)
+                ? Guid.NewGuid().ToString("N")
+                : trigger.Id.Trim();
+            while (!usedIds.Add(trigger.Id))
+            {
+                trigger.Id = Guid.NewGuid().ToString("N");
+            }
+
+            trigger.Name = string.IsNullOrWhiteSpace(trigger.Name)
+                ? "Recovered telemetry trigger"
+                : trigger.Name.Trim()[..Math.Min(trigger.Name.Trim().Length, 80)];
+            trigger.Description = (trigger.Description ?? string.Empty).Trim();
+            if (trigger.Description.Length > 500)
+            {
+                trigger.Description = trigger.Description[..500];
+            }
+            if (!Enum.IsDefined(trigger.TargetEvent)
+                || trigger.TargetEvent
+                    == PSVR2iRacingHaptics.Core.Models.HapticEventKind.None)
+            {
+                trigger.TargetEvent =
+                    PSVR2iRacingHaptics.Core.Models.HapticEventKind.LightImpact;
+            }
+            if (!Enum.IsDefined(trigger.SourceMode))
+            {
+                trigger.SourceMode = TriggerSourceMode.Additive;
+            }
+            if (!Enum.IsDefined(trigger.MatchMode))
+            {
+                trigger.MatchMode = TriggerMatchMode.AllConditions;
+            }
+
+            trigger.HoldMilliseconds = Math.Clamp(trigger.HoldMilliseconds, 0, 10_000);
+            trigger.CooldownMilliseconds = Math.Clamp(
+                trigger.CooldownMilliseconds,
+                0,
+                30_000);
+            trigger.ReleaseMilliseconds = Math.Clamp(
+                trigger.ReleaseMilliseconds,
+                0,
+                10_000);
+            trigger.Priority = Math.Clamp(trigger.Priority, 1, 200);
+            trigger.Conditions ??= [];
+            trigger.Conditions = trigger.Conditions
+                .Where(condition => condition is not null)
+                .Take(32)
+                .ToList();
+            foreach (var condition in trigger.Conditions)
+            {
+                if (!Enum.IsDefined(condition.Signal))
+                {
+                    condition.Signal = TelemetrySignal.HorizontalImpulseG;
+                }
+                if (!Enum.IsDefined(condition.Comparison))
+                {
+                    condition.Comparison = TriggerComparison.GreaterThanOrEqual;
+                }
+                if (!Enum.IsDefined(condition.MissingSignalBehavior))
+                {
+                    condition.MissingSignalBehavior = MissingSignalBehavior.FailCondition;
+                }
+                condition.Value = FiniteClamp(condition.Value, -1_000_000, 1_000_000);
+                condition.SecondValue = FiniteClamp(
+                    condition.SecondValue,
+                    -1_000_000,
+                    1_000_000);
+                condition.EqualityTolerance = FiniteClamp(
+                    condition.EqualityTolerance,
+                    0,
+                    1_000_000);
+                if ((condition.Comparison is TriggerComparison.BetweenInclusive
+                    or TriggerComparison.OutsideInclusive)
+                    && condition.SecondValue < condition.Value)
+                {
+                    (condition.Value, condition.SecondValue) =
+                        (condition.SecondValue, condition.Value);
+                }
+            }
+
+            trigger.CustomEffect ??= new EffectPatternSettings
+            {
+                FrequencyHz = 14,
+                DurationMs = 120
+            };
+            ValidatePattern(trigger.CustomEffect);
+        }
+    }
+
+    private static void ValidatePattern(EffectPatternSettings pattern)
+    {
+        pattern.FrequencyHz = (byte)Math.Clamp(pattern.FrequencyHz, (byte)0, (byte)25);
+        pattern.TailFrequencyHz = (byte)Math.Clamp(
+            pattern.TailFrequencyHz,
+            (byte)0,
+            (byte)25);
+        pattern.DurationMs = Math.Clamp(pattern.DurationMs, 10, 1000);
+        pattern.TailDurationMs = Math.Clamp(pattern.TailDurationMs, 0, 1000);
+        pattern.PulseCount = Math.Clamp(pattern.PulseCount, 1, 8);
+        pattern.GapMs = Math.Clamp(pattern.GapMs, 0, 1000);
+    }
+
+    private static double FiniteClamp(double value, double minimum, double maximum) =>
+        double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : minimum;
 
     private static AppSettings Migrate(AppSettings settings)
     {

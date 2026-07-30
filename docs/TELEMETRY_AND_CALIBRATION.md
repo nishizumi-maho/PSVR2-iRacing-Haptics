@@ -133,10 +133,38 @@ compatible category from 2,000 ms before the click through 250 ms after it,
 reports per-marker timing and peak score, and includes every detector candidate
 rather than only the highest-priority event.
 
+Frames recorded while iRacing is playing its own replay retain
+`IsReplayPlaying=true`. They cannot produce live output, but the offline
+analyzer opts them into detector evaluation. This allows the same incident or
+impact to be calibrated repeatedly without making iRacing replay itself a
+haptic source.
+
+The circular buffer keeps 10–300 seconds in memory and writes a normal JSONL
+file only when explicitly captured. The final line is a marker at the newest
+frame. It is intended for events that cannot be predicted before a normal
+recording is started.
+
+## Custom trigger calibration
+
+Custom triggers can read every normalized raw channel used by the application
+and the processor's derived baselines, deltas, jerk, scores and context. A
+condition owns its comparison value, signed/absolute choice and missing-signal
+policy. The trigger owns AND/OR logic, hold, cooldown and release/rearm state.
+
+**Telemetry triggers → Analyze JSONL** performs a no-output dry run and reports
+per-condition min, median, p95, p99, maximum and marker-window range. Use clean
+laps to characterize negative evidence and several marked events for positive
+evidence. The app does not automatically rewrite custom conditions.
+
+See [CUSTOM_TRIGGERS.md](CUSTOM_TRIGGERS.md) for the full signal catalog,
+interaction modes and worked `LatAccel` example.
+
 ## Recommended calibration process
 
 1. Enable only the desired categories under **Effects**.
-2. Use **Manual test** to calibrate physical comfort before telemetry.
+2. Complete **Comfort calibration** before telemetry. If no clearly
+   perceptible and comfortable range is found, keep physical output disabled
+   and verify the hardware/Toolkit setup.
 3. Apply the **Default** profile.
 4. Record two or three clean laps, including ordinary kerbs.
 5. Confirm that normal driving remains quiet.
@@ -145,7 +173,9 @@ rather than only the highest-priority event.
 8. Review a missed-event suggestion 8% below its observed peak.
 9. Review a false-positive suggestion with an 8% margin above its score.
 10. Change one value at a time and replay the same recording.
-11. Adjust frequency/duration only after detection is reliable.
+11. For a custom rule, compare clean-lap p99 with marked-event peaks and
+    dry-run the identical JSONL after each edit.
+12. Adjust frequency/duration only after detection is reliable.
 
 Interpretation:
 
@@ -167,6 +197,10 @@ without confirmation. If the same recording asks to both raise and lower one
 threshold, the app reports a conflict and disables automatic application.
 Incident markers validate point/type detection but never modify physical
 thresholds.
+
+Custom-rule statistics never produce an automatic edit. Raw accelerations and
+optional suspension signals vary enough by car and track that the margin must
+be reviewed by the user.
 
 ## Automatic profile identity
 

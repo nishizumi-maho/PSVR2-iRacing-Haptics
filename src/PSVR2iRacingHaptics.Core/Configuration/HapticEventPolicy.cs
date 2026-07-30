@@ -41,6 +41,10 @@ public static class HapticEventPolicy
                 settings.Impacts.Enabled && settings.Impacts.MediumEnabled,
             HapticEventKind.StrongImpact =>
                 settings.Impacts.Enabled && settings.Impacts.StrongEnabled,
+            HapticEventKind.SideImpact
+                or HapticEventKind.FrontImpact
+                or HapticEventKind.RearImpact =>
+                settings.Impacts.Enabled && settings.Impacts.MediumEnabled,
             HapticEventKind.RolloverImpact =>
                 settings.Impacts.Enabled && settings.Impacts.RolloverEnabled,
             HapticEventKind.StrongKerb =>

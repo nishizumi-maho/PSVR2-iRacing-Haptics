@@ -8,13 +8,17 @@
 - `ImpactDetector`: collisions, direction, severity and rollover;
 - `VerticalImpactDetector`: kerbs, wheel drops, landings and compression;
 - `IncidentDetector`: exact point deltas and best-effort type classification;
-- `HapticDetectionPipeline`: runs all detectors and selects by priority;
+- `TelemetryTriggerEngine`: stateful profile rules over raw/derived telemetry;
+- `HapticDetectionPipeline`: runs detectors, applies custom rules and selects
+  by priority;
 - `HapticEventPolicy`: decides whether a detected category may produce rumble;
 - `RumbleEffectMapper`: converts events into pulse patterns;
 - `RumbleController`: serialization, preemption, cancellation, limits and OFF;
 - `SettingsService`, `ProfileCatalog`, `ProfileRuleMatcher`,
   `RotatingFileLogger`;
-- `TelemetryRecorder`, `TelemetryReplayClient`, `CalibrationAnalyzer`;
+- `TelemetryRecorder`, `TelemetryCircularBuffer`, `TelemetryReplayClient`,
+  `CalibrationAnalyzer`, `PhysicalCalibrationSession`;
+- `ProfilePackageService`, `DiagnosticBundleService`;
 - `TelemetrySimulator` and `SimulatedRumbleDevice`.
 
 ### Infrastructure
@@ -29,7 +33,11 @@
 
 - `AppCoordinator`: application lifecycle and integration, with no detector
   logic in the UI;
-- `MainForm`: English WinForms interface.
+- `GlobalInputService`: registered keyboard shortcuts and joystick-button edge
+  polling;
+- `ApplicationIntegrationService`: opt-in update check and current-user
+  startup entry;
+- `MainForm` plus focused controls: English WinForms interface.
 
 ## Data flow
 
@@ -37,11 +45,10 @@
 flowchart TD
     A["iRacing or simulator"] --> B["Normalized snapshot"]
     B --> C["Filtering and jerk"]
-    C --> D["Physical detectors"]
-    C --> E["Incident detector"]
-    D --> F["Candidate priority"]
-    E --> F
-    F --> G{"Category enabled?"}
+    C --> D["Built-in detectors"]
+    D --> E["Custom trigger engine"]
+    E --> F["Candidate priority"]
+    F --> G{"Output policy enabled?"}
     G -->|"Yes"| H["Effect mapping"]
     G -->|"No"| I["Diagnostics and recording only"]
     H --> J["Safe controller"]
@@ -51,6 +58,13 @@ flowchart TD
 Category switches are deliberately applied after detection. This allows the
 Diagnostics tab and JSONL calibration to observe an event without sending
 rumble to the headset.
+
+The trigger engine runs after the built-in detectors so `GateBuiltIn` can
+require a same-frame built-in candidate and `ReplaceBuiltIn` can suppress only
+its target kind. Additive rules retain the candidate. All rule state is reset
+on invalid telemetry, source/profile changes and pipeline reset. Live iRacing
+replay is output-ineligible; the analyzer explicitly opts recorded replay
+frames into offline evaluation.
 
 ## Profile flow
 
@@ -65,10 +79,28 @@ flowchart TD
 ```
 
 Rules are deterministic: priority, specificity, then rule name. A profile owns
-detector settings, category switches, incident policy and effect patterns. The
-real/simulated device choice, global haptics switch and safety limits remain
-outside profiles. A profile change resets detector history and stops any active
-effect so samples from two calibrations cannot be mixed.
+detector settings, category switches, incident policy, custom trigger rules and
+effect patterns. The real/simulated device choice, global haptics switch,
+recording/input/application behavior and safety limits remain outside profiles.
+A profile change resets detector/trigger history and stops any active effect so
+samples from two calibrations cannot be mixed.
+
+## Calibration and capture flow
+
+```mermaid
+flowchart TD
+    A["Live SDK or iRacing replay"] --> B["JSONL or circular buffer"]
+    B --> C["Offline pipeline dry run"]
+    C --> D["Marker comparison"]
+    C --> E["Per-condition statistics"]
+    D --> F["Reviewed built-in adjustment"]
+    E --> G["Manual trigger adjustment"]
+```
+
+The circular buffer owns a bounded in-memory queue and writes only on explicit
+capture. `CalibrationAnalyzer` reconstructs the current pipeline and never
+touches a rumble device. Playing JSONL through `AppCoordinator` is a distinct,
+explicit operation that can exercise the selected rumble device.
 
 `SessionInfo` changes slowly and is parsed only when its SDK update counter
 changes. Fast telemetry rows continue to use the dynamic variable-header index.
@@ -115,3 +147,8 @@ implement `ITelemetryClient`. A new detector should emit
 `DetectedHapticEvent`, register a post-detection policy switch, add a mapper
 pattern and include simulator plus safety tests. See `CONTRIBUTING.md` for the
 required checklist.
+
+A new custom-rule signal is added to `TelemetrySignal`, documented in
+`TelemetrySignalCatalog` and mapped in `TelemetryTriggerEngine.ReadSignal`.
+Preserve enum values by appending new members, because serialized profile rules
+store those names and may also be read from older numeric JSON.

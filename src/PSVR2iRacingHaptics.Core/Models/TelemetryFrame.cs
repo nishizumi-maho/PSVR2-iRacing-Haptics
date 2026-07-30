@@ -14,6 +14,11 @@ public sealed record TelemetryFrame
     public bool IsOnTrackCar { get; init; }
     public bool IsInGarage { get; init; }
     public bool IsReplayPlaying { get; init; }
+    /// <summary>
+    /// Runtime-only opt-in used by the app's offline JSONL replay and
+    /// calibration analyzer. Live iRacing replay remains output-ineligible.
+    /// </summary>
+    public bool AllowDetectionDuringReplay { get; init; }
     public int SessionState { get; init; }
     public int EnterExitReset { get; init; }
     public TelemetryContext Context { get; init; } = new();
@@ -61,7 +66,11 @@ public sealed record TelemetryFrame
     public float? TireRrRumblePitchHz { get; init; }
 
     public bool IsDriverInCar =>
-        IsConnected && IsValid && IsOnTrack && !IsReplayPlaying && !IsInGarage;
+        IsConnected
+        && IsValid
+        && IsOnTrack
+        && (!IsReplayPlaying || AllowDetectionDuringReplay)
+        && !IsInGarage;
 
     public static TelemetryFrame Disconnected(DateTimeOffset? timestamp = null) =>
         new()
