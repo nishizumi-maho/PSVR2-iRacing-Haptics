@@ -1,3 +1,4 @@
+using PSVR2iRacingHaptics.Core.Detection;
 using PSVR2iRacingHaptics.Core.Effects;
 using PSVR2iRacingHaptics.Core.Models;
 using PSVR2iRacingHaptics.Infrastructure.Psvr2;
@@ -13,9 +14,12 @@ public sealed record AppRuntimeState
     public bool SimulatedRumble { get; init; }
     public bool SimulatedTelemetry { get; init; }
     public bool Recording { get; init; }
+    public int CircularBufferEntryCount { get; init; }
+    public string LastCircularCapture { get; init; } = "None";
     public string ActiveProfileId { get; init; } = string.Empty;
     public string ActiveProfileName { get; init; } = "Default";
     public bool AutoProfileSelectionEnabled { get; init; }
+    public bool CustomTriggerEngineEnabled { get; init; } = true;
     public string ProfileSelectionStatus { get; init; } =
         "Automatic profile selection is off.";
     public TelemetryContext TelemetryContext { get; init; } = new();
@@ -24,5 +28,7 @@ public sealed record AppRuntimeState
     public string LastEvent { get; init; } = "None";
     public string LastIncident { get; init; } = "None";
     public ProcessedTelemetry? Diagnostics { get; init; }
+    public IReadOnlyList<TriggerEvaluation> TriggerEvaluations { get; init; } =
+        Array.Empty<TriggerEvaluation>();
     public RumbleControllerStatus? Rumble { get; init; }
 }

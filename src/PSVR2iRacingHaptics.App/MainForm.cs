@@ -111,6 +111,23 @@ public sealed class MainForm : Form
     private readonly ComboBox _scenarioCombo = new();
     private readonly CheckBox _telemetrySimulatorCheck = Check("Use simulated telemetry");
     private readonly Label _recordingPath = new();
+    private readonly CheckBox _circularBufferEnabled = Check(
+        "Always keep recent telemetry in memory");
+    private readonly NumericUpDown _circularBufferSeconds = Number(
+        10,
+        300,
+        60,
+        5);
+    private readonly CheckBox _minimizeToTray = Check(
+        "Hide in the notification area when minimized");
+    private readonly CheckBox _startMinimized = Check(
+        "Start minimized in the notification area");
+    private readonly CheckBox _startWithWindows = Check(
+        "Start with the current Windows user");
+    private readonly CheckBox _checkUpdatesOnStartup = Check(
+        "Check GitHub for a newer release at startup");
+    private readonly Label _updateStatus = StatusLabel("Update check has not run.");
+    private readonly NotifyIcon _notifyIcon = new();
     private readonly CheckBox _autoProfileSelection = Check(
         "Automatically select profiles using iRacing car and track identity");
     private readonly Label _detectedCar = StatusLabel("Waiting for iRacing");
@@ -135,19 +152,23 @@ public sealed class MainForm : Form
     public MainForm(AppCoordinator coordinator)
     {
         _coordinator = coordinator;
-        Text = "PSVR2 iRacing Haptics 1.0";
+        Text = "PSVR2 iRacing Haptics 1.1";
         MinimumSize = new Size(950, 700);
         Size = new Size(1160, 820);
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5f);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(242, 244, 247);
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath)
+            ?? SystemIcons.Application;
 
+        ConfigureNotificationIcon();
         Controls.Add(BuildLayout());
         LoadSettings(_coordinator.Settings);
         HookCoordinator();
         Shown += OnShownAsync;
         FormClosing += OnFormClosingAsync;
+        Resize += OnWindowResized;
     }
 
     private Control BuildLayout()
@@ -169,12 +190,22 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(Tab("Status", BuildStateTab()));
         tabs.TabPages.Add(Tab("Effects", BuildEffectsTab()));
         tabs.TabPages.Add(Tab("Manual test", BuildManualTab()));
+        tabs.TabPages.Add(Tab(
+            "Comfort calibration",
+            new PhysicalCalibrationControl(_coordinator)));
+        tabs.TabPages.Add(Tab(
+            "Controls",
+            new InputControlsControl(_coordinator)));
         tabs.TabPages.Add(Tab("Profiles", BuildProfilesTab()));
+        tabs.TabPages.Add(Tab(
+            "Telemetry triggers",
+            new TriggerEditorControl(_coordinator)));
         tabs.TabPages.Add(Tab("Collision tuning", BuildImpactTab()));
         tabs.TabPages.Add(Tab("Vertical tuning", BuildVerticalTab()));
         tabs.TabPages.Add(Tab("Incident tuning", BuildIncidentTab()));
         tabs.TabPages.Add(Tab("Diagnostics", BuildDiagnosticsTab()));
         tabs.TabPages.Add(Tab("Calibration & simulator", BuildCalibrationTab()));
+        tabs.TabPages.Add(Tab("Application", BuildApplicationTab()));
         tabs.TabPages.Add(Tab("Logs", BuildLogsTab()));
         root.Controls.Add(tabs, 0, 1);
         root.Controls.Add(BuildFooter(), 0, 2);
@@ -465,8 +496,79 @@ public sealed class MainForm : Form
             await _coordinator.ResetFactoryProfileAsync(profile.Id);
             LoadSettings(_coordinator.Settings);
         });
+        var export = Button("Export JSON profile");
+        export.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            if (SelectedProfile(_profileCombo) is not { } profile)
+            {
+                return;
+            }
+            using var dialog = new SaveFileDialog
+            {
+                Filter = "Haptics profile (*.psvr2haptics.json)|*.psvr2haptics.json"
+                    + "|JSON files (*.json)|*.json",
+                FileName = SanitizeFileName(profile.Name) + ".psvr2haptics.json",
+                Title = "Export a data-only haptics profile"
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+            await _coordinator.ExportProfileAsync(profile.Id, dialog.FileName);
+            MessageBox.Show(
+                this,
+                "The profile was exported. Global device and safety settings were "
+                + "intentionally excluded.",
+                "Profile exported",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        });
+        var import = Button("Import JSON profile");
+        import.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Filter = "Haptics profile (*.psvr2haptics.json;*.json)"
+                    + "|*.psvr2haptics.json;*.json|All files (*.*)|*.*",
+                Title = "Preview and import a haptics profile"
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+            var preview = await _coordinator.PreviewProfileImportAsync(dialog.FileName);
+            var warnings = preview.Warnings.Count == 0
+                ? "No package warnings."
+                : string.Join(Environment.NewLine, preview.Warnings.Select(warning =>
+                    "• " + warning));
+            var decision = MessageBox.Show(
+                this,
+                $"Profile: {preview.Name}\n"
+                + $"Description: {preview.Description}\n"
+                + $"Custom triggers: {preview.CustomTriggerCount} "
+                + $"({preview.TriggerConditionCount} conditions)\n"
+                + $"Incident haptics: "
+                + $"{(preview.IncidentHapticsEnabled ? "enabled" : "disabled")}\n\n"
+                + warnings
+                + "\n\nImport as a new user profile and activate it?",
+                "Profile import preview",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (decision != DialogResult.Yes)
+            {
+                return;
+            }
+            var imported = await _coordinator.ImportProfileAsync(dialog.FileName);
+            LoadSettings(_coordinator.Settings);
+            MessageBox.Show(
+                this,
+                $"Imported and activated '{imported.Name}'.",
+                "Profile imported",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        });
         profileButtons.Controls.AddRange(
-            [apply, create, duplicate, rename, delete, reset]);
+            [apply, create, duplicate, rename, delete, reset, export, import]);
 
         var automatic = SettingsGrid();
         AddRow(automatic, "Automatic selection", _autoProfileSelection);
@@ -760,6 +862,7 @@ public sealed class MainForm : Form
             ("incident", "Latest incident classification"),
             ("context", "Detected car and track"),
             ("profile", "Active profile"),
+            ("triggers", "Custom trigger evaluation"),
             ("event", "Detected event"),
             ("reason", "Classification reason"),
             ("rumble", "Last rumble command")
@@ -851,6 +954,18 @@ public sealed class MainForm : Form
         }
         AddRow(recorder, "Manual marker", markers);
 
+        AddRow(recorder, "Circular buffer", _circularBufferEnabled);
+        AddRow(recorder, "Seconds kept in memory", _circularBufferSeconds);
+        var saveRecent = Button("Save previous telemetry now");
+        saveRecent.Click += async (_, _) => await SafeUiAction(async () =>
+        {
+            await SaveSettingsAsync();
+            var path = await _coordinator.SaveRecentTelemetryAsync(
+                marker: "Circular buffer capture");
+            _recordingPath.Text = "Saved recent telemetry to " + path;
+        });
+        AddRow(recorder, "Capture recent history", saveRecent);
+
         var files = new FlowLayoutPanel { AutoSize = true };
         var analyze = Button("Compare markers");
         analyze.Click += async (_, _) => await ChooseAndAnalyzeAsync();
@@ -874,6 +989,11 @@ public sealed class MainForm : Form
             + "means the expected event was found. Missed means it was not. Mark false "
             + "positive immediately after an unwanted detection so the advisor can "
             + "recommend a higher threshold."));
+        panel.Controls.Add(Info(
+            "The circular buffer keeps only recent frames in RAM and writes nothing "
+            + "until you press Save previous telemetry. It is ideal when an impact "
+            + "cannot be predicted in advance; the saved marker is placed at the end "
+            + "of the captured history."));
         panel.Controls.Add(SectionTitle("Recording, markers and replay"));
         panel.Controls.Add(simulation);
         panel.Controls.Add(Info(
@@ -891,7 +1011,8 @@ public sealed class MainForm : Form
             + "should remain quiet.\n"
             + "4. Start a JSONL recording. Reproduce one clear event at a time and click "
             + "its marker within about two seconds. Use Mark false positive after any "
-            + "unwanted detection. Stop the recording when done.\n"
+            + "unwanted detection. An iRacing replay may be recorded too; live replay "
+            + "cannot send haptics. Stop the recording when done.\n"
             + "5. Click Compare markers. The advisor shows the matched event, timing and "
             + "peak relevant score. For controlled misses it proposes a threshold 8% "
             + "below the observed peak; for false positives it proposes an 8% margin "
@@ -899,9 +1020,12 @@ public sealed class MainForm : Form
             + "6. Review every recommendation before applying it. Conflicting evidence "
             + "is never auto-applied. Replay the same JSONL after each change so the "
             + "comparison uses identical telemetry.\n"
-            + "7. Collect several examples per car/track, then save them in a dedicated "
+            + "7. For a custom rule, open Telemetry triggers and use Analyze JSONL. "
+            + "Compare clean-lap p95/p99 with marker-window peaks, change one condition, "
+            + "save it and analyze the identical file again.\n"
+            + "8. Collect several examples per car/track, then save them in a dedicated "
             + "profile and optionally add an automatic assignment rule.\n"
-            + "8. Once detection is reliable, tune frequency and duration for comfort. "
+            + "9. Once detection is reliable, tune frequency and duration for comfort. "
             + "Cooldown only controls how soon the same event family can repeat."));
         panel.Controls.Add(Info(
             "Detection controls: sensitivity and thresholds decide when an event exists. "
@@ -909,6 +1033,35 @@ public sealed class MainForm : Form
             + "that event feels. Keeping those two stages separate prevents stronger "
             + "rumble from hiding a poorly calibrated detector."));
         panel.Controls.Add(SectionTitle("How to calibrate"));
+        return panel;
+    }
+
+    private Control BuildApplicationTab()
+    {
+        var panel = ContentPanel();
+        var behavior = SettingsGrid();
+        AddRow(behavior, "Notification area", _minimizeToTray);
+        AddRow(behavior, "Startup display", _startMinimized);
+        AddRow(behavior, "Windows startup", _startWithWindows);
+        AddRow(behavior, "Release checks", _checkUpdatesOnStartup);
+        var save = Button("Save application settings", Color.FromArgb(38, 92, 154));
+        save.Click += async (_, _) => await SafeUiAction(SaveSettingsAsync);
+        AddRow(behavior, "Apply", save);
+
+        var check = Button("Check for updates now");
+        check.Click += async (_, _) => await CheckForUpdatesAsync(showCurrent: true);
+        AddRow(behavior, "Update", check);
+        AddRow(behavior, "Update status", _updateStatus);
+
+        panel.Controls.Add(behavior);
+        panel.Controls.Add(Info(
+            "Start with Windows writes one value under the current user's HKCU Run key "
+            + "and requires no administrator rights. Disabling it removes that value. "
+            + "The application remains portable; no service or scheduled task is created."));
+        panel.Controls.Add(Info(
+            "Update checks call the public GitHub latest-release endpoint and do not "
+            + "download or install anything automatically."));
+        panel.Controls.Add(SectionTitle("Application behavior"));
         return panel;
     }
 
@@ -922,7 +1075,36 @@ public sealed class MainForm : Form
         _logBox.Font = new Font("Cascadia Mono", 9f);
         _logBox.BackColor = Color.FromArgb(25, 28, 34);
         _logBox.ForeColor = Color.Gainsboro;
-        return _logBox;
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 3,
+            ColumnCount = 1
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Add(Info(
+            "A diagnostic bundle contains a manifest, redacted settings and up to five "
+            + "recent logs. A recording is included only when you explicitly select one. "
+            + "Review the ZIP before sharing it publicly."), 0, 0);
+        var buttons = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = true
+        };
+        var bundle = Button("Create diagnostic ZIP");
+        bundle.Click += async (_, _) => await CreateDiagnosticBundleAsync(
+            includeRecording: false);
+        var bundleWithRecording = Button("Create ZIP with selected recording");
+        bundleWithRecording.Click += async (_, _) => await CreateDiagnosticBundleAsync(
+            includeRecording: true);
+        var openLogs = Button("Open data folder");
+        openLogs.Click += (_, _) => OpenDirectory(_coordinator.DataDirectory);
+        buttons.Controls.AddRange([bundle, bundleWithRecording, openLogs]);
+        root.Controls.Add(buttons, 0, 1);
+        root.Controls.Add(_logBox, 0, 2);
+        return root;
     }
 
     private Control BuildFooter()
@@ -964,11 +1146,24 @@ public sealed class MainForm : Form
         button.Margin = new Padding(0, 12, 0, 0);
         button.Click += async (_, _) => await SafeUiAction(async () =>
         {
-            var settings = ReadSettings();
-            await _coordinator.ApplySettingsAsync(settings);
-            LoadSettings(_coordinator.Settings);
+            await SaveSettingsAsync();
         });
         return button;
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        var previous = _coordinator.Settings;
+        var settings = ReadSettings();
+        if (settings.Application.StartWithWindows
+            || settings.Application.StartWithWindows
+                != previous.Application.StartWithWindows)
+        {
+            ApplicationIntegrationService.SetStartWithWindows(
+                settings.Application.StartWithWindows);
+        }
+        await _coordinator.ApplySettingsAsync(settings);
+        LoadSettings(_coordinator.Settings);
     }
 
     private void HookCoordinator()
@@ -983,6 +1178,123 @@ public sealed class MainForm : Form
         });
     }
 
+    private void ConfigureNotificationIcon()
+    {
+        _notifyIcon.Icon = (System.Drawing.Icon)Icon.Clone();
+        _notifyIcon.Text = "PSVR2 iRacing Haptics";
+        _notifyIcon.Visible = false;
+        _notifyIcon.DoubleClick += (_, _) => ShowFromNotificationArea();
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Open", null, (_, _) => ShowFromNotificationArea());
+        menu.Items.Add("Toggle all haptics", null, async (_, _) =>
+        {
+            var settings = _coordinator.Settings;
+            settings.HapticsEnabled = !settings.HapticsEnabled;
+            await SafeUiAction(() => _coordinator.ApplySettingsAsync(settings));
+        });
+        menu.Items.Add("STOP ALL RUMBLE NOW", null, async (_, _) =>
+            await SafeUiAction(() =>
+                _coordinator.EmergencyStopAsync("notification-area command")));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Exit", null, (_, _) =>
+        {
+            ShowFromNotificationArea();
+            Close();
+        });
+        _notifyIcon.ContextMenuStrip = menu;
+    }
+
+    private void OnWindowResized(object? sender, EventArgs eventArgs)
+    {
+        if (WindowState == FormWindowState.Minimized
+            && _coordinator.Settings.Application.MinimizeToNotificationArea)
+        {
+            HideToNotificationArea();
+        }
+    }
+
+    private void HideToNotificationArea()
+    {
+        _notifyIcon.Visible = true;
+        ShowInTaskbar = false;
+        Hide();
+    }
+
+    private void ShowFromNotificationArea()
+    {
+        Show();
+        ShowInTaskbar = true;
+        WindowState = FormWindowState.Normal;
+        Activate();
+        _notifyIcon.Visible = false;
+    }
+
+    private async Task CheckForUpdatesAsync(bool showCurrent)
+    {
+        try
+        {
+            _updateStatus.Text = "Checking GitHub…";
+            var result = await ApplicationIntegrationService.CheckForUpdatesAsync(
+                Application.ProductVersion);
+            _updateStatus.Text = result.Message;
+            if (result.UpdateAvailable)
+            {
+                if (!showCurrent)
+                {
+                    _notifyIcon.Visible = true;
+                    _notifyIcon.ShowBalloonTip(
+                        5000,
+                        "PSVR2 iRacing Haptics update",
+                        result.Message,
+                        ToolTipIcon.Info);
+                }
+                else
+                {
+                    var open = MessageBox.Show(
+                        this,
+                        $"{result.Message}\n\nOpen the release page?",
+                        "Update available",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information);
+                    if (open == DialogResult.Yes
+                        && Uri.TryCreate(
+                            result.ReleaseUrl,
+                            UriKind.Absolute,
+                            out var uri))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = uri.AbsoluteUri,
+                            UseShellExecute = true
+                        });
+                    }
+                }
+            }
+            else if (showCurrent)
+            {
+                MessageBox.Show(
+                    this,
+                    result.Message,
+                    "No update available",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception exception)
+        {
+            _updateStatus.Text = "Update check failed: " + exception.Message;
+            if (showCurrent)
+            {
+                MessageBox.Show(
+                    this,
+                    exception.Message,
+                    "Update check failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+    }
+
     private async void OnShownAsync(object? sender, EventArgs eventArgs)
     {
         if (_started)
@@ -991,6 +1303,16 @@ public sealed class MainForm : Form
         }
         _started = true;
         await SafeUiAction(() => _coordinator.StartAsync());
+        var application = _coordinator.Settings.Application;
+        if (application.CheckForUpdatesOnStartup)
+        {
+            await CheckForUpdatesAsync(showCurrent: false);
+        }
+        if (application.StartMinimized)
+        {
+            WindowState = FormWindowState.Minimized;
+            HideToNotificationArea();
+        }
     }
 
     private async void OnFormClosingAsync(object? sender, FormClosingEventArgs eventArgs)
@@ -1003,6 +1325,8 @@ public sealed class MainForm : Form
         eventArgs.Cancel = true;
         Enabled = false;
         await _coordinator.DisposeAsync();
+        _notifyIcon.Visible = false;
+        _notifyIcon.Dispose();
         _allowClose = true;
         Close();
     }
@@ -1074,6 +1398,19 @@ public sealed class MainForm : Form
         _diagnosticValues["incident"].Text = state.LastIncident;
         _diagnosticValues["profile"].Text =
             $"{state.ActiveProfileName} — {state.ProfileSelectionStatus}";
+        _diagnosticValues["triggers"].Text = !state.CustomTriggerEngineEnabled
+            ? "Custom telemetry triggers are disabled for this profile."
+            : state.TriggerEvaluations.Count == 0
+            ? "No enabled custom triggers in this profile."
+            : string.Join(
+                " | ",
+                state.TriggerEvaluations
+                    .Where(evaluation =>
+                        evaluation.Fired || evaluation.ConditionsMatched)
+                    .DefaultIfEmpty(state.TriggerEvaluations[0])
+                    .Take(3)
+                    .Select(evaluation =>
+                        $"{evaluation.TriggerName}: {evaluation.Explanation}"));
         _diagnosticValues["event"].Text = state.LastEvent;
         if (state.Rumble is not null)
         {
@@ -1090,6 +1427,17 @@ public sealed class MainForm : Form
             _autoProfileSelection.Checked = settings.AutoProfileSelectionEnabled;
             _rumbleModeCombo.SelectedIndex = settings.UseSimulatedRumbleDevice ? 1 : 0;
             _hapticsEnabled.Checked = settings.HapticsEnabled;
+            _circularBufferEnabled.Checked =
+                settings.Recording.CircularBufferEnabled;
+            Set(
+                _circularBufferSeconds,
+                settings.Recording.CircularBufferSeconds);
+            _minimizeToTray.Checked =
+                settings.Application.MinimizeToNotificationArea;
+            _startMinimized.Checked = settings.Application.StartMinimized;
+            _startWithWindows.Checked = settings.Application.StartWithWindows;
+            _checkUpdatesOnStartup.Checked =
+                settings.Application.CheckForUpdatesOnStartup;
             _impactEnabled.Checked = settings.Impacts.Enabled;
             _lightImpactsEnabled.Checked = settings.Impacts.LightEnabled;
             _mediumImpactsEnabled.Checked = settings.Impacts.MediumEnabled;
@@ -1217,6 +1565,15 @@ public sealed class MainForm : Form
         var settings = _coordinator.Settings;
         settings.HapticsEnabled = _hapticsEnabled.Checked;
         settings.UseSimulatedRumbleDevice = _rumbleModeCombo.SelectedIndex == 1;
+        settings.Recording.CircularBufferEnabled = _circularBufferEnabled.Checked;
+        settings.Recording.CircularBufferSeconds =
+            (int)_circularBufferSeconds.Value;
+        settings.Application.MinimizeToNotificationArea =
+            _minimizeToTray.Checked;
+        settings.Application.StartMinimized = _startMinimized.Checked;
+        settings.Application.StartWithWindows = _startWithWindows.Checked;
+        settings.Application.CheckForUpdatesOnStartup =
+            _checkUpdatesOnStartup.Checked;
         settings.Impacts.Enabled = _impactEnabled.Checked;
         settings.Impacts.LightEnabled = _lightImpactsEnabled.Checked;
         settings.Impacts.MediumEnabled = _mediumImpactsEnabled.Checked;
@@ -1373,7 +1730,66 @@ public sealed class MainForm : Form
         {
             return;
         }
+        var settings = _coordinator.Settings;
+        if (settings.HapticsEnabled
+            && !settings.UseSimulatedRumbleDevice
+            && MessageBox.Show(
+                this,
+                "Replaying a JSONL file runs it through the current detectors and may "
+                + "send physical rumble to the headset. Choose No and select the "
+                + "simulated rumble device if you only want a silent dry run.\n\n"
+                + "Continue with real hardware output?",
+                "Replay can send headset rumble",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) != DialogResult.Yes)
+        {
+            return;
+        }
         await SafeUiAction(() => _coordinator.StartReplayAsync(dialog.FileName, 1.0));
+    }
+
+    private async Task CreateDiagnosticBundleAsync(bool includeRecording)
+    {
+        string? recordingPath = null;
+        if (includeRecording)
+        {
+            using var recordingDialog = JsonlDialog(
+                "Select the recording to include in the diagnostic bundle");
+            if (recordingDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+            recordingPath = recordingDialog.FileName;
+        }
+
+        using var outputDialog = new SaveFileDialog
+        {
+            Filter = "Diagnostic ZIP (*.zip)|*.zip",
+            FileName = $"PSVR2-Haptics-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            Title = "Save redacted diagnostic bundle"
+        };
+        if (outputDialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        await SafeUiAction(async () =>
+        {
+            var result = await _coordinator.CreateDiagnosticBundleAsync(
+                outputDialog.FileName,
+                recordingPath);
+            MessageBox.Show(
+                this,
+                $"Diagnostic bundle created:\n{result.Path}\n\n"
+                + $"Logs: {result.LogFileCount}\n"
+                + $"Recording: "
+                + $"{(result.IncludedRecording ? "included" : "not included")}\n"
+                + $"Size: {result.SizeBytes / 1024.0:F1} KiB\n\n"
+                + "Review the ZIP before sharing it.",
+                "Diagnostic bundle ready",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        });
     }
 
     private void ConfigureRulesGrid()
@@ -1646,6 +2062,46 @@ public sealed class MainForm : Form
                 text.AppendLine(recommendation.Reason);
             }
         }
+        if (report.TriggerSummaries.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Custom trigger dry run:");
+            foreach (var trigger in report.TriggerSummaries.Take(8))
+            {
+                text.Append("• ")
+                    .Append(trigger.TriggerName)
+                    .Append(" → ")
+                    .Append(trigger.TargetEvent)
+                    .Append(": ")
+                    .Append(trigger.FiredCount)
+                    .Append(" firing(s), ")
+                    .Append(trigger.MatchingFrameCount)
+                    .Append('/')
+                    .Append(trigger.FrameCount)
+                    .AppendLine(" matching frames.");
+                foreach (var condition in trigger.Conditions.Take(4))
+                {
+                    var unit = string.IsNullOrWhiteSpace(condition.Unit)
+                        ? string.Empty
+                        : $" {condition.Unit}";
+                    text.Append("    ")
+                        .Append(condition.Signal)
+                        .Append(": p95 ")
+                        .Append(condition.Percentile95?.ToString("F3") ?? "n/a")
+                        .Append(unit)
+                        .Append(", p99 ")
+                        .Append(condition.Percentile99?.ToString("F3") ?? "n/a")
+                        .Append(unit);
+                    if (condition.MarkerWindowMaximum.HasValue)
+                    {
+                        text.Append(", marker max ")
+                            .Append(condition.MarkerWindowMaximum.Value.ToString("F3"))
+                            .Append(unit);
+                    }
+                    text.AppendLine();
+                }
+            }
+        }
         return text.ToString().TrimEnd();
     }
 
@@ -1900,6 +2356,16 @@ public sealed class MainForm : Form
         TelemetryScenario.ConnectionLoss => "Connection loss",
         _ => scenario.ToString()
     };
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var cleaned = new string(value
+            .Select(character => invalid.Contains(character) ? '_' : character)
+            .ToArray())
+            .Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? "haptics-profile" : cleaned;
+    }
 
     private static void OpenDirectory(string directory)
     {

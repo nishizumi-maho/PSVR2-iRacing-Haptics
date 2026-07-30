@@ -65,6 +65,9 @@ public sealed record DetectedHapticEvent(
     public int IncidentPoints { get; init; }
     public IncidentType IncidentType { get; init; } = IncidentType.NotApplicable;
     public bool HasRelatedPhysicalEvent { get; init; }
+    public bool IsCustomTrigger { get; init; }
+    public string? TriggerId { get; init; }
+    public string? TriggerName { get; init; }
 }
 
 public sealed record DetectionResult(

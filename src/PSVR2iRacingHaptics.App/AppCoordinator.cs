@@ -22,6 +22,7 @@ public sealed class AppCoordinator : IAsyncDisposable
     private readonly HapticDetectionPipeline _pipeline = new();
     private readonly RumbleEffectMapper _effectMapper = new();
     private readonly TelemetryRecorder _recorder;
+    private readonly TelemetryCircularBuffer _circularBuffer;
     private readonly IRacingSharedMemoryClient _iracing;
     private readonly TelemetrySimulator _simulator;
     private readonly SimulatedRumbleDevice _simulatedRumble;
@@ -49,11 +50,14 @@ public sealed class AppCoordinator : IAsyncDisposable
         {
             ActiveProfileId = settings.ActiveProfileId,
             ActiveProfileName = settings.ActiveProfile,
-            AutoProfileSelectionEnabled = settings.AutoProfileSelectionEnabled
+            AutoProfileSelectionEnabled = settings.AutoProfileSelectionEnabled,
+            CustomTriggerEngineEnabled = settings.Triggers.Enabled
         };
         _settingsService = settingsService;
         _logger = logger;
         _recorder = new TelemetryRecorder(logger);
+        _circularBuffer = new TelemetryCircularBuffer(
+            settings.Recording.CircularBufferSeconds);
         _iracing = new IRacingSharedMemoryClient(logger);
         _simulator = new TelemetrySimulator(logger);
         _simulatedRumble = new SimulatedRumbleDevice(logger);
@@ -125,6 +129,7 @@ public sealed class AppCoordinator : IAsyncDisposable
         {
             _settings = saved;
         }
+        _circularBuffer.RetentionSeconds = saved.Recording.CircularBufferSeconds;
 
         await RecreateRumbleControllerAsync(cancellationToken).ConfigureAwait(false);
         lock (_pipelineLock)
@@ -216,6 +221,44 @@ public sealed class AppCoordinator : IAsyncDisposable
         _logger.Info($"Factory profile reset: {profileName}.");
     }
 
+    public Task ExportProfileAsync(
+        string profileId,
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var profile = ProfileCatalog.FindProfile(settings, profileId)
+            ?? throw new ArgumentException(
+                "The selected profile does not exist.",
+                nameof(profileId));
+        _logger.Info($"Exporting profile {profile.Name}: {Path.GetFullPath(path)}");
+        return ProfilePackageService.ExportAsync(
+            profile,
+            path,
+            Application.ProductVersion,
+            cancellationToken);
+    }
+
+    public Task<ProfileImportPreview> PreviewProfileImportAsync(
+        string path,
+        CancellationToken cancellationToken = default) =>
+        ProfilePackageService.PreviewAsync(path, cancellationToken);
+
+    public async Task<HapticProfile> ImportProfileAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var profile = await ProfilePackageService.ImportAsync(
+            settings,
+            path,
+            cancellationToken).ConfigureAwait(false);
+        ProfileCatalog.ApplyProfile(settings, profile.Id);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Profile imported and activated: {profile.Name}.");
+        return profile;
+    }
+
     public async Task SetAutomaticProfileSelectionAsync(
         bool enabled,
         CancellationToken cancellationToken = default)
@@ -271,6 +314,100 @@ public sealed class AppCoordinator : IAsyncDisposable
         await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
         _lastProfileContextFingerprint = string.Empty;
         EvaluateAutomaticProfile(State.TelemetryContext);
+    }
+
+    public async Task UpsertTelemetryTriggerAsync(
+        CustomTelemetryTrigger trigger,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(trigger.Name))
+        {
+            throw new ArgumentException("A trigger name is required.", nameof(trigger));
+        }
+        if (trigger.Conditions.Count == 0)
+        {
+            throw new ArgumentException(
+                "A trigger needs at least one telemetry condition.",
+                nameof(trigger));
+        }
+
+        var settings = Settings;
+        var existing = settings.Triggers.CustomTriggers.FirstOrDefault(candidate =>
+            candidate.Id.Equals(trigger.Id, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            settings.Triggers.CustomTriggers.Add(trigger);
+        }
+        else
+        {
+            var index = settings.Triggers.CustomTriggers.IndexOf(existing);
+            settings.Triggers.CustomTriggers[index] = trigger;
+        }
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info(
+            $"Telemetry trigger saved: {trigger.Name}; target={trigger.TargetEvent}; "
+            + $"mode={trigger.SourceMode}; conditions={trigger.Conditions.Count}.");
+    }
+
+    public async Task DeleteTelemetryTriggerAsync(
+        string triggerId,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var trigger = settings.Triggers.CustomTriggers.FirstOrDefault(candidate =>
+            candidate.Id.Equals(triggerId, StringComparison.OrdinalIgnoreCase));
+        if (trigger is null)
+        {
+            return;
+        }
+        settings.Triggers.CustomTriggers.Remove(trigger);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Telemetry trigger deleted: {trigger.Name}.");
+    }
+
+    public async Task DuplicateTelemetryTriggerAsync(
+        string triggerId,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        var source = settings.Triggers.CustomTriggers.FirstOrDefault(candidate =>
+            candidate.Id.Equals(triggerId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException(
+                "The source trigger does not exist.",
+                nameof(triggerId));
+        var json = System.Text.Json.JsonSerializer.Serialize(source);
+        var copy = System.Text.Json.JsonSerializer.Deserialize<CustomTelemetryTrigger>(json)
+            ?? throw new InvalidOperationException("Could not duplicate the trigger.");
+        copy.Id = Guid.NewGuid().ToString("N");
+        copy.Name = string.IsNullOrWhiteSpace(newName)
+            ? $"{source.Name} copy"
+            : newName.Trim();
+        settings.Triggers.CustomTriggers.Add(copy);
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info($"Telemetry trigger duplicated: {copy.Name}.");
+    }
+
+    public async Task ResetTelemetryTriggersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        settings.Triggers = new TelemetryTriggerSettings();
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info("All custom telemetry triggers were removed from the active profile.");
+    }
+
+    public async Task SetTelemetryTriggerEngineEnabledAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        settings.Triggers.Enabled = enabled;
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info(
+            $"Custom telemetry trigger engine "
+            + $"{(enabled ? "enabled" : "disabled")} for profile "
+            + $"{settings.ActiveProfile}.");
     }
 
     public async Task ApplyCalibrationRecommendationsAsync(
@@ -334,6 +471,20 @@ public sealed class AppCoordinator : IAsyncDisposable
         return _rumbleController.TryPlayAsync(effect, cancellationToken);
     }
 
+    public async Task SavePhysicalCalibrationAsync(
+        PhysicalCalibrationSettings calibration,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        settings.PhysicalCalibration = calibration;
+        await ApplySettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+        _logger.Info(
+            "Physical comfort calibration saved: "
+            + $"preferred={calibration.PreferredFrequencyHz} Hz/"
+            + $"{calibration.PreferredDurationMs} ms; "
+            + $"comfortable ceiling={calibration.MaximumComfortableFrequencyHz} Hz.");
+    }
+
     public Task EmergencyStopAsync(
         string reason = "emergency stop button",
         CancellationToken cancellationToken = default) =>
@@ -377,13 +528,68 @@ public sealed class AppCoordinator : IAsyncDisposable
         UpdateState(state => state with { Recording = false });
     }
 
-    public Task MarkAsync(string marker, CancellationToken cancellationToken = default) =>
-        _recorder.MarkAsync(marker, cancellationToken);
+    public Task MarkAsync(string marker, CancellationToken cancellationToken = default)
+    {
+        if (!_recorder.IsRecording)
+        {
+            throw new InvalidOperationException(
+                "Start a JSONL recording before adding calibration markers.");
+        }
+        return _recorder.MarkAsync(marker, cancellationToken);
+    }
+
+    public async Task<string> SaveRecentTelemetryAsync(
+        string? path = null,
+        string marker = "circular buffer saved",
+        CancellationToken cancellationToken = default)
+    {
+        var settings = Settings;
+        if (!settings.Recording.CircularBufferEnabled)
+        {
+            throw new InvalidOperationException(
+                "The circular telemetry buffer is disabled in settings.");
+        }
+        path ??= Path.Combine(
+            _paths.RecordingsDirectory,
+            $"recent-{settings.Recording.CircularBufferSeconds}s-"
+            + $"{DateTime.Now:yyyyMMdd-HHmmss}.jsonl");
+        var count = await _circularBuffer.SaveSnapshotAsync(
+            path,
+            marker,
+            cancellationToken).ConfigureAwait(false);
+        _logger.Info(
+            $"Circular telemetry buffer saved: {Path.GetFullPath(path)}; "
+            + $"entries={count}.");
+        UpdateState(state => state with
+        {
+            LastCircularCapture = Path.GetFullPath(path),
+            CircularBufferEntryCount = _circularBuffer.EntryCount
+        });
+        return Path.GetFullPath(path);
+    }
 
     public Task<CalibrationReport> AnalyzeRecordingAsync(
         string path,
         CancellationToken cancellationToken = default) =>
         CalibrationAnalyzer.AnalyzeAsync(path, Settings, cancellationToken);
+
+    public async Task<DiagnosticBundleResult> CreateDiagnosticBundleAsync(
+        string outputPath,
+        string? recordingPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await DiagnosticBundleService.CreateAsync(
+            outputPath,
+            _paths,
+            Settings,
+            Application.ProductVersion,
+            recordingPath,
+            cancellationToken).ConfigureAwait(false);
+        _logger.Info(
+            $"Diagnostic bundle created: {result.Path}; logs={result.LogFileCount}; "
+            + $"recording={(result.IncludedRecording ? "included" : "not included")}.");
+        return result;
+    }
 
     public async Task StartReplayAsync(
         string path,
@@ -394,7 +600,11 @@ public sealed class AppCoordinator : IAsyncDisposable
         {
             await _replay.DisposeAsync().ConfigureAwait(false);
         }
-        _replay = new TelemetryReplayClient(path, speedMultiplier, _logger);
+        _replay = new TelemetryReplayClient(
+            path,
+            speedMultiplier,
+            allowRecordedIRacingReplay: true,
+            logger: _logger);
         await ActivateTelemetryAsync(_replay, simulated: true, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -470,6 +680,10 @@ public sealed class AppCoordinator : IAsyncDisposable
         {
             _ = _recorder.RecordFrameAsync(frame, result.SelectedEvent);
         }
+        if (settings.Recording.CircularBufferEnabled)
+        {
+            _circularBuffer.AddFrame(frame, result.SelectedEvent);
+        }
 
         if (!frame.IsConnected || !frame.IsDriverInCar)
         {
@@ -525,7 +739,10 @@ public sealed class AppCoordinator : IAsyncDisposable
                 TelemetryContext = frame.Context,
                 ActiveProfileId = settings.ActiveProfileId,
                 ActiveProfileName = settings.ActiveProfile,
+                CustomTriggerEngineEnabled = settings.Triggers.Enabled,
                 Diagnostics = result.Diagnostics,
+                TriggerEvaluations = result.TriggerEvaluations,
+                CircularBufferEntryCount = _circularBuffer.EntryCount,
                 LastEvent = result.SelectedEvent is null
                     ? state.LastEvent
                     : FormatLastEvent(result.SelectedEvent, settings),
@@ -547,7 +764,8 @@ public sealed class AppCoordinator : IAsyncDisposable
             var physicalEffect = _effectMapper.Map(
                 physical,
                 settings.Effects,
-                settings.Incidents);
+                settings.Incidents,
+                settings.Triggers);
             _ = _rumbleController.TryPlayAsync(physicalEffect);
             if (incident is not null)
             {
@@ -564,7 +782,8 @@ public sealed class AppCoordinator : IAsyncDisposable
                 _effectMapper.Map(
                     incident,
                     settings.Effects,
-                    settings.Incidents));
+                    settings.Incidents,
+                    settings.Triggers));
         }
     }
 
@@ -589,7 +808,8 @@ public sealed class AppCoordinator : IAsyncDisposable
                 _effectMapper.Map(
                     incident,
                     settings.Effects,
-                    settings.Incidents),
+                    settings.Incidents,
+                    settings.Triggers),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -655,6 +875,7 @@ public sealed class AppCoordinator : IAsyncDisposable
             ActiveProfileId = current.ActiveProfileId,
             ActiveProfileName = current.ActiveProfile,
             AutoProfileSelectionEnabled = current.AutoProfileSelectionEnabled,
+            CustomTriggerEngineEnabled = current.Triggers.Enabled,
             ProfileSelectionStatus = status,
             TelemetryContext = context
         });
@@ -831,6 +1052,7 @@ public sealed class AppCoordinator : IAsyncDisposable
             ActiveProfileId = settings.ActiveProfileId,
             ActiveProfileName = settings.ActiveProfile,
             AutoProfileSelectionEnabled = settings.AutoProfileSelectionEnabled,
+            CustomTriggerEngineEnabled = settings.Triggers.Enabled,
             RumbleDeviceStatus = settings.UseSimulatedRumbleDevice
                 ? _simulatedRumble.StatusDescription
                 : _toolkit.StatusDescription,

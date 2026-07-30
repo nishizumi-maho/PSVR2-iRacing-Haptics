@@ -6,7 +6,8 @@ namespace PSVR2iRacingHaptics.Core.Detection;
 public sealed record PipelineResult(
     DetectedHapticEvent? SelectedEvent,
     IReadOnlyList<DetectedHapticEvent> Candidates,
-    ProcessedTelemetry Diagnostics);
+    ProcessedTelemetry Diagnostics,
+    IReadOnlyList<TriggerEvaluation> TriggerEvaluations);
 
 public sealed class HapticDetectionPipeline
 {
@@ -14,6 +15,7 @@ public sealed class HapticDetectionPipeline
     private readonly ImpactDetector _impactDetector = new();
     private readonly VerticalImpactDetector _verticalDetector = new();
     private readonly IncidentDetector _incidentDetector = new();
+    private readonly TelemetryTriggerEngine _triggerEngine = new();
 
     public PipelineResult Process(TelemetryFrame frame, AppSettings settings)
     {
@@ -35,7 +37,7 @@ public sealed class HapticDetectionPipeline
             vertical.Diagnostics,
             settings.Incidents,
             physicalCandidates);
-        var candidates = physicalCandidates
+        var builtInCandidates = physicalCandidates
             .Cast<DetectedHapticEvent?>()
             .Append(incident.Event)
             .Where(x => x is not null)
@@ -43,11 +45,17 @@ public sealed class HapticDetectionPipeline
             .OrderByDescending(x => x.Priority)
             .ThenByDescending(x => x.Score)
             .ToArray();
+        var triggerResult = _triggerEngine.Evaluate(
+            vertical.Diagnostics,
+            settings.Triggers,
+            builtInCandidates);
+        var candidates = triggerResult.Candidates;
 
         return new PipelineResult(
             candidates.FirstOrDefault(),
             candidates,
-            vertical.Diagnostics);
+            vertical.Diagnostics,
+            triggerResult.Evaluations);
     }
 
     public void Reset()
@@ -56,5 +64,6 @@ public sealed class HapticDetectionPipeline
         _impactDetector.Reset();
         _verticalDetector.Reset();
         _incidentDetector.Reset();
+        _triggerEngine.Reset();
     }
 }

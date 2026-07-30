@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0 — 2026-07-30
+
+- Added profile-owned custom telemetry triggers with raw and derived iRacing
+  channels, AND/OR matching, absolute values, eight comparisons, missing-channel
+  policy, hold, cooldown, release/rearm behavior and editable priority.
+- Added profile-wide and per-trigger enable switches without deleting
+  calibration data.
+- Added additive, replace-built-in and gate-built-in trigger modes, plus optional
+  per-trigger rumble patterns.
+- Added dry-run trigger calibration against JSONL recordings with min, median,
+  p95, p99 and marker-window statistics.
+- Added calibration support for telemetry recorded while an iRacing replay is
+  playing; live replay still cannot send haptics accidentally.
+- Added a configurable 10–300 second circular telemetry buffer.
+- Added global keyboard shortcuts and wheel-button bindings for emergency stop,
+  haptics, recording, circular capture and calibration markers.
+- Added a guided physical perception/comfort test with Not felt, Clear and
+  Uncomfortable ratings; it records an explicit no-usable-range result instead
+  of inventing a recommendation.
+- Added versioned profile import/export with a safety preview.
+- Added redacted diagnostic ZIP generation with optional recording attachment.
+- Added notification-area minimization, per-user Windows startup and optional
+  GitHub release checks.
+- Added a project-owned scalable application icon used by the executable,
+  taskbar and notification area.
+- Added an explicit hardware-output warning before replaying JSONL through the
+  live haptic pipeline.
+- Expanded settings migration, tests, architecture notes and contributor
+  documentation for the new rule engine.
+
 ## 1.0.0 — 2026-07-30
 
 - added persistent, user-created profiles with create, duplicate, rename, delete

@@ -23,6 +23,30 @@ public sealed record CalibrationRecommendation(
     string Reason,
     bool CanApply = true);
 
+public sealed record TriggerConditionStatistics(
+    int ConditionIndex,
+    TelemetrySignal Signal,
+    string Unit,
+    int SampleCount,
+    int MissingSampleCount,
+    double? Minimum,
+    double? Maximum,
+    double? Median,
+    double? Percentile95,
+    double? Percentile99,
+    double? MarkerWindowMinimum,
+    double? MarkerWindowMaximum);
+
+public sealed record TriggerCalibrationSummary(
+    string TriggerId,
+    string TriggerName,
+    HapticEventKind TargetEvent,
+    int FrameCount,
+    int MatchingFrameCount,
+    int FiredCount,
+    int MatchedButSuppressedCount,
+    IReadOnlyList<TriggerConditionStatistics> Conditions);
+
 public sealed record CalibrationReport(
     int MarkerCount,
     int MatchedCount,
@@ -32,6 +56,8 @@ public sealed record CalibrationReport(
 {
     public IReadOnlyList<CalibrationRecommendation> Recommendations { get; init; } =
         Array.Empty<CalibrationRecommendation>();
+    public IReadOnlyList<TriggerCalibrationSummary> TriggerSummaries { get; init; } =
+        Array.Empty<TriggerCalibrationSummary>();
 }
 
 /// <summary>
@@ -49,9 +75,17 @@ public static class CalibrationAnalyzer
         CancellationToken cancellationToken = default)
     {
         var pipeline = new HapticDetectionPipeline();
+        var triggerDryRunPipeline = settings.Triggers.Enabled
+            ? null
+            : new HapticDetectionPipeline();
+        var triggerDryRunSettings = settings.Triggers.Enabled
+            ? settings
+            : settings.DeepClone();
+        triggerDryRunSettings.Triggers.Enabled = true;
         var markers = new List<TelemetryLogEntry>();
         var detections = new List<DetectedHapticEvent>();
         var diagnostics = new List<ProcessedTelemetry>();
+        var triggerFrames = new List<TriggerFrameSample>();
 
         await foreach (var entry in TelemetryReplayClient.ReadEntriesAsync(
             path,
@@ -64,9 +98,19 @@ public static class CalibrationAnalyzer
 
             if (entry.EntryType == "frame" && entry.Frame is not null)
             {
-                var result = pipeline.Process(entry.Frame, settings);
+                var frame = entry.Frame.IsReplayPlaying
+                    ? entry.Frame with { AllowDetectionDuringReplay = true }
+                    : entry.Frame;
+                var result = pipeline.Process(frame, settings);
                 diagnostics.Add(result.Diagnostics);
                 detections.AddRange(result.Candidates);
+                var triggerEvaluations = triggerDryRunPipeline is null
+                    ? result.TriggerEvaluations
+                    : triggerDryRunPipeline.Process(
+                        frame,
+                        triggerDryRunSettings).TriggerEvaluations;
+                triggerFrames.AddRange(triggerEvaluations.Select(evaluation =>
+                    new TriggerFrameSample(frame.Timestamp, evaluation)));
             }
         }
 
@@ -134,6 +178,10 @@ public static class CalibrationAnalyzer
         }
 
         var recommendations = Consolidate(rawRecommendations);
+        var triggerSummaries = BuildTriggerSummaries(
+            settings,
+            triggerFrames,
+            markers);
         var matched = matches.Count(match => match.MatchedDetection.HasValue);
         return new CalibrationReport(
             markers.Count,
@@ -142,8 +190,107 @@ public static class CalibrationAnalyzer
             Math.Max(0, detections.Count - usedDetections.Count),
             matches)
         {
-            Recommendations = recommendations
+            Recommendations = recommendations,
+            TriggerSummaries = triggerSummaries
         };
+    }
+
+    private static IReadOnlyList<TriggerCalibrationSummary> BuildTriggerSummaries(
+        AppSettings settings,
+        IReadOnlyList<TriggerFrameSample> frames,
+        IReadOnlyList<TelemetryLogEntry> markers)
+    {
+        var summaries = new List<TriggerCalibrationSummary>();
+        foreach (var trigger in settings.Triggers.CustomTriggers.Where(trigger =>
+                     trigger.Enabled))
+        {
+            var triggerFrames = frames
+                .Where(frame => frame.Evaluation.TriggerId.Equals(
+                    trigger.Id,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var compatibleMarkers = markers
+                .Where(marker =>
+                    !string.IsNullOrWhiteSpace(marker.Marker)
+                    && ExpectedKinds(marker.Marker!).Contains(trigger.TargetEvent))
+                .Select(marker => marker.Timestamp)
+                .ToArray();
+            var conditionStatistics = new List<TriggerConditionStatistics>();
+            for (var conditionIndex = 0;
+                 conditionIndex < trigger.Conditions.Count;
+                 conditionIndex++)
+            {
+                var condition = trigger.Conditions[conditionIndex];
+                var samples = triggerFrames
+                    .Select(frame => frame.Evaluation.Conditions
+                        .ElementAtOrDefault(conditionIndex)?.ObservedValue)
+                    .Where(value => value.HasValue && double.IsFinite(value.Value))
+                    .Select(value => value!.Value)
+                    .Order()
+                    .ToArray();
+                var markerSamples = triggerFrames
+                    .Where(frame => compatibleMarkers.Any(marker =>
+                    {
+                        var delta = (frame.Timestamp - marker).TotalMilliseconds;
+                        return delta >= -LookBehindMilliseconds
+                            && delta <= LookAheadMilliseconds;
+                    }))
+                    .Select(frame => frame.Evaluation.Conditions
+                        .ElementAtOrDefault(conditionIndex)?.ObservedValue)
+                    .Where(value => value.HasValue && double.IsFinite(value.Value))
+                    .Select(value => value!.Value)
+                    .Order()
+                    .ToArray();
+                var descriptor = TelemetrySignalCatalog.Describe(condition.Signal);
+                conditionStatistics.Add(new TriggerConditionStatistics(
+                    conditionIndex,
+                    condition.Signal,
+                    descriptor.Unit,
+                    samples.Length,
+                    Math.Max(0, triggerFrames.Length - samples.Length),
+                    samples.Length == 0 ? null : samples[0],
+                    samples.Length == 0 ? null : samples[^1],
+                    Percentile(samples, 0.50),
+                    Percentile(samples, 0.95),
+                    Percentile(samples, 0.99),
+                    markerSamples.Length == 0 ? null : markerSamples[0],
+                    markerSamples.Length == 0 ? null : markerSamples[^1]));
+            }
+
+            summaries.Add(new TriggerCalibrationSummary(
+                trigger.Id,
+                trigger.Name,
+                trigger.TargetEvent,
+                triggerFrames.Length,
+                triggerFrames.Count(frame => frame.Evaluation.ConditionsMatched),
+                triggerFrames.Count(frame => frame.Evaluation.Fired),
+                triggerFrames.Count(frame =>
+                    frame.Evaluation.ConditionsMatched && !frame.Evaluation.Fired),
+                conditionStatistics));
+        }
+        return summaries;
+    }
+
+    private static double? Percentile(IReadOnlyList<double> sorted, double percentile)
+    {
+        if (sorted.Count == 0)
+        {
+            return null;
+        }
+        if (sorted.Count == 1)
+        {
+            return sorted[0];
+        }
+
+        var position = Math.Clamp(percentile, 0, 1) * (sorted.Count - 1);
+        var lower = (int)Math.Floor(position);
+        var upper = (int)Math.Ceiling(position);
+        if (lower == upper)
+        {
+            return sorted[lower];
+        }
+        var fraction = position - lower;
+        return sorted[lower] + (sorted[upper] - sorted[lower]) * fraction;
     }
 
     private static CalibrationRecommendation? BuildRecommendation(
@@ -364,4 +511,8 @@ public static class CalibrationAnalyzer
             HapticEventKind.RolloverImpact
         };
     }
+
+    private sealed record TriggerFrameSample(
+        DateTimeOffset Timestamp,
+        TriggerEvaluation Evaluation);
 }

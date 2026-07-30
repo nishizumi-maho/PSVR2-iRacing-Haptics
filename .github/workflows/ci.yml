@@ -38,9 +38,9 @@ jobs:
       - name: Upload portable package
         uses: actions/upload-artifact@v7
         with:
-          name: PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable
+          name: PSVR2-iRacing-Haptics-win-x64-portable
           path: |
-            build/PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip
-            build/PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip.sha256
+            build/PSVR2-iRacing-Haptics-v*-win-x64-portable.zip
+            build/PSVR2-iRacing-Haptics-v*-win-x64-portable.zip.sha256
           if-no-files-found: error
           retention-days: 30

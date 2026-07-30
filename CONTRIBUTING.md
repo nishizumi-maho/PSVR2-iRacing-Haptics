@@ -39,7 +39,8 @@ headset.
 
 - `PSVR2iRacingHaptics.Core` owns normalized models, signal processing,
   detectors, event policy, profiles, effects, controller safety, recording and
-  replay. It must not depend on WinForms or native DLL loading.
+  replay, custom triggers and calibration services. It must not depend on
+  WinForms or native DLL loading.
 - `PSVR2iRacingHaptics.Infrastructure` owns the iRacing shared-memory reader and
   PSVR2 Toolkit C API client.
 - `PSVR2iRacingHaptics.App` owns lifecycle coordination and the English
@@ -114,6 +115,7 @@ Profile-owned data:
 - collision and vertical detector settings;
 - event-category switches;
 - incident policy;
+- custom telemetry triggers;
 - all rumble patterns.
 
 Global data:
@@ -123,7 +125,28 @@ Global data:
 - safety limits;
 - profile catalog, assignment rules and automatic-selection switch.
 
+Recording/circular-buffer, physical-calibration, input and desktop-integration
+settings are also global.
+
 Rule matching must remain deterministic: priority, specificity, then rule name.
+
+## Adding a custom-trigger signal
+
+1. Confirm the source variable's real SDK type and unit.
+2. Add or normalize the value in `TelemetryFrame`/the signal processor.
+3. Append a `TelemetrySignal` member; do not reorder existing members.
+4. Add its unit and plain-language meaning to `TelemetrySignalCatalog`.
+5. Map it in `TelemetryTriggerEngine.ReadSignal`.
+6. Ensure JSONL recording/replay preserves the source value.
+7. Add positive, signed/absolute, missing-channel and replay tests as relevant.
+8. Update `docs/CUSTOM_TRIGGERS.md`.
+
+Rule evaluation must remain deterministic and bounded. Do not add arbitrary
+code execution, reflection over settings, expressions that allocate per frame,
+or a way to bypass `IsDriverInCar`, output policy or controller safety.
+
+Changes to Additive/Replace/Gate semantics need focused tests for both candidate
+emission and suppression. Replacement must remain scoped to one event kind.
 
 ## Style
 

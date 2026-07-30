@@ -2,7 +2,7 @@ namespace PSVR2iRacingHaptics.Core.Configuration;
 
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string ActiveProfile { get; set; } = "Default";
@@ -15,6 +15,11 @@ public sealed class AppSettings
     public ImpactSettings Impacts { get; set; } = new();
     public VerticalImpactSettings Vertical { get; set; } = new();
     public IncidentSettings Incidents { get; set; } = new();
+    public TelemetryTriggerSettings Triggers { get; set; } = new();
+    public RecordingSettings Recording { get; set; } = new();
+    public PhysicalCalibrationSettings PhysicalCalibration { get; set; } = new();
+    public InputSettings Input { get; set; } = new();
+    public ApplicationBehaviorSettings Application { get; set; } = new();
     public SafetySettings Safety { get; set; } = new();
     public EffectSettings Effects { get; set; } = new();
 
@@ -39,6 +44,7 @@ public sealed class HapticProfileConfiguration
     public ImpactSettings Impacts { get; set; } = new();
     public VerticalImpactSettings Vertical { get; set; } = new();
     public IncidentSettings Incidents { get; set; } = new();
+    public TelemetryTriggerSettings Triggers { get; set; } = new();
     public EffectSettings Effects { get; set; } = new();
 
     public HapticProfileConfiguration DeepClone()
@@ -133,6 +139,32 @@ public sealed class SafetySettings
     public int MaximumEffectDurationMs { get; set; } = 550;
     public int MaximumCallsPerSecond { get; set; } = 20;
     public int NativeCallTimeoutMs { get; set; } = 1200;
+}
+
+public sealed class RecordingSettings
+{
+    public bool CircularBufferEnabled { get; set; } = true;
+    public int CircularBufferSeconds { get; set; } = 60;
+}
+
+public sealed class PhysicalCalibrationSettings
+{
+    public bool Completed { get; set; }
+    public bool UsableRangeFound { get; set; }
+    public byte MinimumClearlyPerceptibleFrequencyHz { get; set; } = 10;
+    public byte PreferredFrequencyHz { get; set; } = 16;
+    public byte MaximumComfortableFrequencyHz { get; set; } = 22;
+    public int MinimumClearlyPerceptibleDurationMs { get; set; } = 90;
+    public int PreferredDurationMs { get; set; } = 140;
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
+public sealed class ApplicationBehaviorSettings
+{
+    public bool MinimizeToNotificationArea { get; set; } = true;
+    public bool StartMinimized { get; set; }
+    public bool StartWithWindows { get; set; }
+    public bool CheckForUpdatesOnStartup { get; set; }
 }
 
 public sealed class EffectPatternSettings

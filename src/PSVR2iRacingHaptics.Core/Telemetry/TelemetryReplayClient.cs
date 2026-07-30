@@ -8,6 +8,7 @@ public sealed class TelemetryReplayClient : ITelemetryClient
 {
     private readonly string _path;
     private readonly double _speedMultiplier;
+    private readonly bool _allowRecordedIRacingReplay;
     private readonly IAppLogger _logger;
     private CancellationTokenSource? _lifetime;
     private Task _replayTask = Task.CompletedTask;
@@ -15,10 +16,12 @@ public sealed class TelemetryReplayClient : ITelemetryClient
     public TelemetryReplayClient(
         string path,
         double speedMultiplier = 1.0,
+        bool allowRecordedIRacingReplay = false,
         IAppLogger? logger = null)
     {
         _path = Path.GetFullPath(path);
         _speedMultiplier = Math.Clamp(speedMultiplier, 0.1, 20);
+        _allowRecordedIRacingReplay = allowRecordedIRacingReplay;
         _logger = logger ?? NullAppLogger.Instance;
     }
 
@@ -69,7 +72,10 @@ public sealed class TelemetryReplayClient : ITelemetryClient
                     }
                 }
 
-                FrameReceived?.Invoke(this, entry.Frame);
+                var frame = _allowRecordedIRacingReplay && entry.Frame.IsReplayPlaying
+                    ? entry.Frame with { AllowDetectionDuringReplay = true }
+                    : entry.Frame;
+                FrameReceived?.Invoke(this, frame);
                 previousTimestamp = entry.Timestamp;
             }
         }
