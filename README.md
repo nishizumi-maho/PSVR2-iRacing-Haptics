@@ -1,107 +1,145 @@
 # PSVR2 iRacing Haptics
 
-Aplicativo auxiliar independente para Windows que converte telemetria do
-iRacing em padrões de vibração do headset PlayStation VR2 por meio da C API do
-[PSVR2 Toolkit](https://github.com/BnuuySolutions/PSVR2Toolkit).
+[![Validate and package](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/workflows/ci.yml/badge.svg)](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/nishizumi-maho/PSVR2-iRacing-Haptics)](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/releases/latest)
 
-O programa **não incorpora, redistribui, modifica ou substitui** o PSVR2
-Toolkit. Ele não altera o driver, não acessa o USB diretamente e não executa
-jailbreak. A DLL continua pertencendo à instalação do Toolkit e é carregada no
-local indicado pelo próprio Toolkit.
+An independent Windows companion app that converts iRacing telemetry into
+PlayStation VR2 headset rumble patterns through the
+[PSVR2 Toolkit](https://github.com/BnuuySolutions/PSVR2Toolkit) C API.
 
-## Aviso importante
+The app does **not bundle, redistribute, modify or replace** PSVR2 Toolkit. It
+does not patch the driver, access USB directly or perform a jailbreak. The C
+API DLL remains part of the Toolkit installation and is loaded from the path
+published by the Toolkit itself.
 
-Na versão do Toolkit analisada, a vibração do headset é marcada como um recurso
-que exige jailbreak. O projeto oficial alerta para risco de danificar ou até
-inutilizar o headset. Este aplicativo não torna o procedimento mais seguro e
-não executa nenhuma etapa dele. Leia os guias oficiais e prossiga por sua conta
-e risco.
+## Important warning
 
-Não use outro cliente de rumble do headset ao mesmo tempo: a C API possui até
-oito slots de cliente, mas o comando de vibração do HMD é global e não tem
-prioridade/arbitragem entre programas.
+In the Toolkit version reviewed for this project, headset rumble is marked as a
+feature that requires a jailbroken headset. The upstream project warns that the
+procedure can damage or even permanently disable the headset. This app does not
+perform that procedure or make it safer. Read the upstream documentation and
+continue at your own risk.
 
-## Requisitos
+Do not run another headset-rumble client at the same time. The C API provides
+eight client slots, but HMD rumble is global and has no arbitration or priority
+between applications.
 
-- Windows 10 ou Windows 11 x64;
-- PlayStation VR2 no PC;
-- PSVR2 Toolkit instalado, configurado e em execução;
-- driver do Toolkit ativo;
-- jailbreak/configuração exigida pelo Toolkit para vibração do headset;
-- iRacing, somente para telemetria real;
-- nenhum privilégio administrativo;
-- nenhum Python.
+## Requirements
 
-O ZIP portátil é autocontido e não exige instalação do .NET. Configurações,
-logs e gravações ficam na pasta `data` ao lado do executável porque o pacote
-inclui `portable.mode`. Se esse arquivo for removido, os dados passam para
-`%LOCALAPPDATA%\PSVR2iRacingHaptics`.
+- Windows 10 or Windows 11 x64
+- PlayStation VR2 connected to the PC
+- PSVR2 Toolkit installed, configured and running
+- SteamVR running with the Toolkit driver active
+- the jailbreak/configuration required by the Toolkit for headset rumble
+- iRacing, only for live telemetry
+- no administrator privileges
+- no Python installation
 
-## Uso rápido
+The portable ZIP is self-contained and does not require a separate .NET
+installation. Because it includes `portable.mode`, settings, logs and
+recordings are stored in the `data` folder beside the executable. If that file
+is removed, data is stored under `%LOCALAPPDATA%\PSVR2iRacingHaptics`.
 
-1. Instale e inicie normalmente o PSVR2 Toolkit e o SteamVR.
-2. Confirme no Toolkit que o driver está ativo.
-3. Extraia todo o ZIP para uma pasta comum do usuário.
-4. Execute `PSVR2iRacingHaptics.exe`.
-5. Abra **Teste manual**, mantenha `PSVR2 Toolkit (hardware real)` selecionado
-   e teste inicialmente 10 Hz por 40 ms.
-6. Use **PARAR VIBRAÇÃO AGORA** se algo não se comportar como esperado.
-7. Inicie o iRacing e entre no carro. O estado deve mostrar `iRacing conectado`
-   e `Usuário no carro`.
+The executable is not Authenticode-signed, because this project does not have a
+code-signing certificate. Windows may display an Unknown publisher/SmartScreen
+warning. Download only from this repository's Releases page and verify the
+provided `.sha256` sidecar before running it.
 
-O teste manual funciona sem o iRacing. O simulador funciona sem iRacing e sem
-headset: selecione `Dispositivo simulado` em **Teste manual** e ative
-`Usar telemetria simulada` em **Calibração e simulador**.
+## Quick start
 
-## O que foi confirmado no PSVR2 Toolkit
+1. Start PSVR2 Toolkit and SteamVR normally.
+2. Confirm that the Toolkit driver is active.
+3. Extract the entire portable ZIP to a normal user folder.
+4. Run `PSVR2iRacingHaptics.exe`.
+5. Open **Manual test**, select `PSVR2 Toolkit (real hardware)` and begin with
+   12 Hz for 120 ms.
+6. Use **STOP ALL RUMBLE NOW** if anything behaves unexpectedly.
+7. Open **Effects** and enable only the event categories you want to feel.
+8. Start iRacing and enter the car. Status should show `iRacing connected` and
+   `Driver in car`.
+9. Keep the **Default** profile until you have a clean calibration recording.
 
-A análise foi feita no commit
+The manual test works without iRacing. The telemetry simulator can drive either
+the real headset or the fake rumble device:
+
+- select `PSVR2 Toolkit (real hardware)` on **Manual test** to feel scenarios;
+- select `Simulated rumble device` to validate commands and logs without a
+  headset;
+- enable `Use simulated telemetry` on **Calibration & simulator** in either
+  case.
+
+## Choosing enabled effects
+
+The **Effects** tab contains a master haptics switch and independent switches
+for:
+
+- all collision haptics;
+- light, medium and strong impacts;
+- rollover impacts;
+- strong kerbs;
+- light kerbs, disabled by default;
+- landings;
+- wheel drops;
+- severe vertical compression;
+- incident-point notifications as a separate master category;
+- 1x, 2x, 4x and other incident-point changes;
+- inferred off-track, loss-of-control, contact, rollover and unknown incident
+  types.
+
+Disabling an event prevents its rumble pattern from being sent. Detection,
+diagnostics and recording remain active, so a disabled effect can still be
+calibrated safely. Event choices are stored in the active profile, so different
+cars can intentionally enable different effects. The global master haptics
+switch, selected device and safety limits are not changed by a profile.
+
+## Confirmed PSVR2 Toolkit behavior
+
+The analysis targets commit
 [`9e24e6ef475660481e8b46366aaa3cb24d0b4fde`](https://github.com/BnuuySolutions/PSVR2Toolkit/commit/9e24e6ef475660481e8b46366aaa3cb24d0b4fde),
-estado de `main` em 29 de julho de 2026.
+the state of `main` reviewed on July 29, 2026.
 
-| Questão | Resultado confirmado no código |
+| Question | Behavior confirmed in source |
 | --- | --- |
 | DLL | `psvr2_toolkit_capi.dll` |
-| Descoberta | `%TEMP%\psvr2tk_capi_path.txt`, escrito pelo driver com o diretório da C API |
-| Loader oficial | Lê a primeira linha, acrescenta o nome da DLL e usa `LoadLibraryExA(..., LOAD_WITH_ALTERED_SEARCH_PATH)` |
-| Inicialização | `psvr2_toolkit_init()` retorna `0` (OK), `-1` (driver inativo) ou `-2` (sem slot) |
-| Clientes | Há 8 slots; `deinit()` apenas libera o slot |
-| Estado do driver | `psvr2_toolkit_get_driver_active()` retorna `bool` |
+| Discovery | `%TEMP%\psvr2tk_capi_path.txt`, written by the driver with the C API directory |
+| Official loader | Reads the first line, appends the DLL name and calls `LoadLibraryExA(..., LOAD_WITH_ALTERED_SEARCH_PATH)` |
+| Initialization | `psvr2_toolkit_init()` returns `0` (OK), `-1` (driver inactive) or `-2` (no free slot) |
+| Clients | Eight slots; `deinit()` only releases the slot |
+| Driver state | `psvr2_toolkit_get_driver_active()` returns `bool` |
 | Rumble | `void psvr2_toolkit_set_hmd_rumble(uint8_t rumbleHz)` |
-| Faixa | A função aceita todo `uint8_t` e não valida. O teste oficial limita a interface a `0–25`. Este aplicativo adota esse limite conservador |
-| Driver | `HeadsetRumbleSet` encaminha 1 byte ao comando de controle `0x08` |
-| Intensidade | Não existe parâmetro separado |
-| Duração | Não existe duração nem auto-off no caminho analisado |
-| Retorno | O envio é `void`; não informa sucesso ao cliente |
-| Driver inativo | O gerenciador descarta o comando quando detecta driver inativo |
-| Presença do headset | Não é exposta separadamente pela C API |
-| Versão da C API | Não existe export de versão |
+| Range | The function accepts any `uint8_t` and does not clamp it. The official test UI limits input to `0–25`; this app uses the same conservative range |
+| Driver command | `HeadsetRumbleSet` forwards one byte through control command `0x08` |
+| Separate intensity | Not available |
+| Built-in duration | Not available; there is no visible auto-off timer |
+| Return value | The send function is `void` and does not confirm delivery |
+| Inactive driver | The manager discards the command when it detects an inactive driver |
+| Headset presence | Not exposed separately by the C API |
+| C API version | No version export exists |
 
-O nome do parâmetro e a interface oficial chamam o byte de Hz, e o driver o
-encaminha sem conversão. O código público, porém, não mede nem garante que a
-frequência física percebida seja exatamente o número solicitado.
+The parameter and the official UI call the byte “Hz,” and the driver forwards
+it without conversion. The public source does not measure or guarantee that
+the perceived physical frequency exactly matches the requested number.
 
-O teste oficial permite enviar `0`, e não há duração/auto-off no driver. Isso é
-compatível com `0 = desligado`, mas o significado final do comando USB vive no
-firmware do headset e não é demonstrado no repositório. Por segurança, o
-aplicativo sempre envia `0` após cada pulso e requer a confirmação inicial no
-teste físico.
+The official test can send `0`, and no duration or auto-off behavior is visible
+in the driver path. This is consistent with `0 = off`, but the final meaning of
+USB command `0x08` is implemented in headset firmware and is not demonstrated
+in the repository. For safety, this app sends `0` after every pulse and
+requires this behavior to be confirmed during the first hardware test.
 
-O thread de comandos do driver trabalha em torno de 10 ms, mas o Toolkit não
-documenta uma frequência máxima segura de chamadas. O limite padrão deste
-aplicativo é **20 chamadas não-zero por segundo**; comandos `0` de emergência
-não aguardam o limitador.
+The driver command thread runs at roughly 10 ms intervals, but the Toolkit does
+not document a safe maximum call rate. This app defaults to **20 non-zero calls
+per second**. Emergency `0` commands bypass that limiter.
 
-Detalhes e referências de arquivo estão em
-[docs/PSVR2_TOOLKIT_ANALYSIS.md](docs/PSVR2_TOOLKIT_ANALYSIS.md).
+See [docs/PSVR2_TOOLKIT_ANALYSIS.md](docs/PSVR2_TOOLKIT_ANALYSIS.md) for file
+references and the complete analysis.
 
-## Telemetria do iRacing
+## iRacing telemetry
 
-A integração lê diretamente `Local\IRSDKMemMapFileName` e aguarda
-`Local\IRSDKDataValidEvent`. Os cabeçalhos são descobertos em tempo de execução;
-nenhum offset de variável de carro é fixo.
+The integration reads `Local\IRSDKMemMapFileName` directly and waits on
+`Local\IRSDKDataValidEvent`. Variable headers are discovered at runtime; no
+car-variable offset is hard-coded.
 
-Sinais usados:
+Signals used include:
 
 - `IsOnTrack`, `IsOnTrackCar`, `IsInGarage`, `IsReplayPlaying`;
 - `Speed`, `LatAccel`, `LongAccel`, `VertAccel`;
@@ -109,130 +147,242 @@ Sinais usados:
 - `Yaw`, `Pitch`, `Roll`, `YawRate`, `PitchRate`, `RollRate`;
 - `Brake`, `Throttle`, `Gear`, `RPM`;
 - `PlayerCarMyIncidentCount`;
-- `PlayerTrackSurface` e `PlayerTrackSurfaceMaterial`;
+- `PlayerTrackSurface`, `PlayerTrackSurfaceMaterial`;
 - `LF/RF/LR/RRspeed`;
-- `LF/RF/LR/RRshockDefl` e `LF/RF/LR/RRshockVel`;
+- `LF/RF/LR/RRshockDefl`, `LF/RF/LR/RRshockVel`;
 - `TireLF/RF/LR/RR_RumblePitch`.
 
-Suspensão, velocidades individuais e rumble pitch dependem do carro/sessão. O
-programa detecta a ausência e usa sinais alternativos. O SDK não oferece um
-evento direto e confiável de colisão, contato individual de cada roda ou
-impulso de dano; por isso a classificação é heurística.
+Suspension, individual wheel speed and rumble-pitch channels depend on the car
+and session. The app detects missing channels and uses fallback signals. The
+iRacing SDK does not provide a single reliable collision event, individual
+wheel-contact bit or damage impulse, so classification is heuristic.
 
-O detector calcula média lenta, aceleração suavizada, desvio da média, jerk nos
-três eixos, desaceleração, rotação, atividade/assimetria da suspensão e contexto
-temporal. Contador de incidentes é somente evidência auxiliar.
+The detector calculates a slow baseline, smoothed acceleration, deviation from
+the baseline, jerk on all three axes, deceleration, angular motion, suspension
+activity/asymmetry and temporal context. Incident count is only supporting
+evidence for physical-impact classification; a separate incident detector
+handles exact counter changes.
 
-## Padrões padrão
+The app also reads the slowly changing `SessionInfo` YAML block from the same
+shared-memory mapping. It extracts the current driver's `CarPath`, display
+name, class and IDs plus the circuit's `TrackName`, display name, ID and
+configuration. These values are used only for display and optional profile
+assignment rules.
 
-- batida leve: 12 Hz por 75 ms;
-- batida média: 18 Hz por 125 ms;
-- batida forte: 24 Hz por 145 ms, 40 ms de pausa, 21 Hz por 80 ms;
-- capotamento: dois pulsos de 22 Hz por 90 ms;
-- zebra forte: 13 Hz por 60 ms;
-- queda de roda: 15 Hz por 80 ms;
-- pouso: 18 Hz por 60 ms, 30 ms de pausa, 14 Hz por 50 ms;
-- compressão severa: 20 Hz por 105 ms.
+## Incident haptics
 
-Frequência não é tratada como intensidade física. Os efeitos são diferenciados
-por frequência, duração, quantidade, intervalo e cauda.
+`PlayerCarMyIncidentCount` is a cumulative integer. A positive counter delta is
+therefore an exact point change, and the app exposes separate events for 1x,
+2x, 4x and any other delta.
 
-Prioridades: batida forte, capotamento, batida média, pouso, compressão, batida
-leve, queda de roda e zebra. Um efeito forte cancela um fraco; um efeito fraco
-não interrompe um forte.
+The SDK does **not** expose an official incident cause beside that counter. The
+app labels an incident as off track, loss of control, contact, rollover or
+unknown by examining the preceding track-location, acceleration, rotation and
+physical-event evidence. These type labels are explicitly best-effort.
 
-## Segurança implementada
+Each profile controls:
 
-- botão permanente de parada imediata;
-- `0 Hz` após pulso, cancelamento, exceção, desativação e encerramento;
-- `0 Hz` ao perder telemetria, sair do carro ou perder o driver;
-- duração contínua e duração total máximas;
-- serialização de todas as chamadas;
-- limite de chamadas por segundo;
-- timeout da chamada nativa;
-- bloqueio de novos comandos se uma chamada nativa travar;
-- nenhuma operação nativa na thread da interface;
-- zebras leves desativadas por padrão;
-- abertura normal sem iRacing e sem Toolkit.
+- the incident master switch;
+- point-value gates and inferred-type gates;
+- cooldown and evidence-window length;
+- duplicate suppression for related physical impacts;
+- whether the waveform is selected by exact point value or inferred type;
+- frequency, duration, pulse count and gap for every point/type waveform.
 
-## Calibração e replay
+Both the point gate and inferred-type gate must allow the event. By default,
+incident rumble is off and duplicate suppression is on; diagnostics and
+recording still receive every detected counter increase.
 
-1. Abra **Calibração e simulador**.
-2. Clique em **Iniciar gravação**.
-3. Durante a volta, marque manualmente uma batida, zebra forte ou pouso.
-4. Encerre a gravação.
-5. Use **Comparar marcações** para reprocessar o JSONL com os limiares atuais.
-6. Ajuste os limiares e compare novamente sem precisar entrar no simulador.
+## Default rumble patterns
 
-Cada linha JSONL contém o snapshot completo necessário ao algoritmo, a
-classificação feita na gravação e, quando aplicável, a marcação manual. A
-comparação aceita uma detecção compatível até 500 ms da marcação.
+- light impact: 12 Hz for 120 ms;
+- medium impact: 18 Hz for 160 ms;
+- strong impact: 24 Hz for 200 ms, 55 ms pause, then 21 Hz for 100 ms;
+- rollover: two 22 Hz pulses for 120 ms, separated by 65 ms;
+- strong kerb: 14 Hz for 110 ms;
+- wheel drop: 16 Hz for 130 ms;
+- landing: 19 Hz for 140 ms, 60 ms pause, then 15 Hz for 110 ms;
+- severe compression: 20 Hz for 150 ms;
+- 1x incident: 12 Hz for 105 ms;
+- 2x incident: two 16 Hz pulses for 115 ms, separated by 65 ms;
+- 4x incident: 20 Hz for 150 ms, then a 16 Hz tail for 90 ms;
+- other incident delta: 14 Hz for 120 ms.
 
-Os cenários internos incluem carro parado, aceleração, frenagem, zebra leve,
-zebra forte, queda de roda, pouso, batida lateral, batida frontal, colisão
-forte, capotamento e perda de conexão.
+Frequency is not treated as physical intensity. Effects are distinguished by
+frequency, duration, pulse count, spacing and optional tail.
 
-## Perfis
+The defaults favor recognizable events without prolonged vibration. Ordinary
+events use one pulse; tails are reserved for strong impacts and landings, while
+rollover uses a double pulse. The default safety limits are 250 ms of continuous
+rumble and 550 ms for a complete effect. Light kerbs remain disabled and strong
+kerbs respect cooldown.
 
-- **Padrão**: equilíbrio inicial;
-- **Suave**: limiares maiores e frequências menores;
-- **Forte**: limiares menores e frequências maiores;
-- **Personalizado**: valores editados na interface.
+Priority order favors strong physical impacts and rollover, followed by medium
+impacts, 4x incidents, landing/compression, light impacts and lower-point
+incidents/vertical events. A stronger effect can replace a weaker one; a weaker
+effect cannot interrupt a stronger one. When duplicate protection is disabled,
+a related incident notification is queued after its physical effect instead of
+interrupting it.
 
-A configuração já separa perfil e detectores para permitir futuramente perfis
-por carro, categoria, pista e usuário.
+## Calibration
+
+Calibration has two separate stages:
+
+- **Detection controls** — sensitivity and thresholds decide whether an event
+  exists.
+- **Feel controls** — frequency, duration, pulse count and gap decide how a
+  detected event feels.
+
+Do not compensate for missed detections by making rumble longer. Calibrate
+detection first, then tune the physical sensation.
+
+Recommended workflow:
+
+1. On **Effects**, enable only the categories you want.
+2. On **Manual test**, find a comfortable frequency and duration before using
+   live telemetry.
+3. Apply the **Default** profile.
+4. In an iRacing solo test session, drive two or three clean laps using normal
+   braking and ordinary kerbs. The app should remain quiet.
+5. Open **Calibration & simulator** and start a JSONL recording.
+6. Reproduce one clear event at a time. Click `Mark impact`,
+   `Mark strong kerb`, `Mark landing`, `Mark 1x`, `Mark 2x` or `Mark 4x`
+   immediately after it happens.
+7. Stop recording and click **Compare markers**.
+8. Review the bounded recommendation. A controlled miss proposes a threshold
+   8% below the observed peak; a marked false positive proposes an 8% margin
+   above its score. Conflicting evidence is never auto-applied.
+9. Incident markers validate counter handling and classification but do not
+   change physical thresholds automatically.
+10. Change one value at a time, save, and replay the same JSONL. Watch
+    `Collision score` and `Vertical score` under **Diagnostics**.
+11. Once detection is reliable, tune frequency and duration for comfort.
+    Cooldown only controls how soon the same event family can repeat.
+
+Calibration results mean:
+
+- **Matched** — the current detector found the expected category from 2,000 ms
+  before the marker through 250 ms after it, allowing for reaction time;
+- **Missed** — a marker had no compatible detection, often because its
+  threshold is too high;
+- **Unmarked detections** — the detector found events that were not marked,
+  usually false positives or events omitted during marking.
+
+Each JSONL line stores the complete telemetry snapshot required by the current
+algorithm, the detection made at recording time and an optional marker. A
+recording can be replayed after changing settings; entering the simulator again
+is not required.
+
+Built-in scenarios cover a parked car, normal acceleration, hard braking, light
+and strong kerbs, wheel drop, landing, side impact, front impact, strong
+collision, rollover, 1x off track, 2x loss of control, 4x contact and connection
+loss.
+
+## Profiles and automatic activation
+
+The four resettable factory profiles are:
+
+- **Default** — balanced starting point;
+- **Gentle** — higher thresholds and milder rumble;
+- **Strong** — lower thresholds and more pronounced rumble;
+- **Custom** — editable general-purpose starting point.
+
+Use **Profiles** to create a profile from the current setup, duplicate any
+profile, rename/delete user profiles, or reset a factory profile. Each profile
+stores collision and vertical thresholds, individual event switches, incident
+policy and every event waveform. Factory profiles cannot be renamed or deleted.
+
+Automatic activation is optional. A rule targets one profile and may contain
+any combination of:
+
+- `CarPath` (the most stable car identifier);
+- car display name;
+- car class;
+- `TrackName` (the most stable track identifier);
+- track configuration.
+
+Every populated field is an AND condition. `*` matches any sequence and `?`
+matches one character, both case-insensitively. Higher priority wins; an equal
+priority prefers the more specific rule and then the rule name for deterministic
+results. If no rule matches, the current profile stays active.
+
+Existing 0.1.x/0.2.0 settings and Portuguese factory-profile names are migrated
+without discarding customized detector/effect values.
+
+See [docs/PROFILES_AND_INCIDENTS.md](docs/PROFILES_AND_INCIDENTS.md) for rule
+examples, incident pattern modes, precedence and troubleshooting.
+
+## Safety behavior
+
+- permanent emergency-stop button;
+- `0 Hz` after every pulse, cancellation, exception, disable and shutdown;
+- `0 Hz` when telemetry is lost, the driver exits the car or the Toolkit driver
+  becomes inactive;
+- continuous-duration and total-effect limits;
+- serialized device calls;
+- call-rate limit;
+- native-call timeout;
+- new native calls blocked after a stuck call;
+- no native operation on the UI thread;
+- light kerbs disabled by default;
+- normal startup without iRacing or PSVR2 Toolkit.
 
 ## Logs
 
-No modo portátil: `data\logs\psvr2-iracing-haptics.log`.
+Portable mode: `data\logs\psvr2-iracing-haptics.log`.
 
-Os logs registram versão do app, caminho/versão disponível da DLL, resultado de
-init, estado do driver, conexão do iRacing, entrada/saída do carro, valores e
-motivos de cada evento, padrão enviado, cancelamentos, erros e `Rumble: OFF`.
-Cada arquivo gira em 5 MiB, com quatro históricos.
+Logs include app version, Toolkit DLL path, initialization result,
+driver state, iRacing connection and in-car changes, detection values and
+reasons, suppressed event categories, rumble patterns, cancellations, errors
+and `Rumble: OFF`. Logs rotate at 5 MiB with four retained files.
 
-## Compilar
+## Build
 
-Requer o SDK .NET 8 x64.
+The .NET 8 x64 SDK is required. `global.json` pins the tested 8.0.423 feature
+band and permits later patches in that band.
 
 ```powershell
 .\build.ps1
 ```
 
-O script restaura, compila, executa os testes, publica autocontido para
-`win-x64` e cria:
+The script restores, builds, runs the test executable, publishes a
+self-contained `win-x64` app and creates:
 
 ```text
-build\PSVR2-iRacing-Haptics-v0.1.0-win-x64-portable.zip
+build\PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip
 ```
 
-Para executar pelo código-fonte no Windows:
+Run from source on Windows:
 
 ```powershell
 .\run.ps1
 ```
 
-Para iniciar já com o rumble falso:
+Start with the fake rumble device:
 
 ```powershell
 .\run.ps1 -Simulator
 ```
 
-Os testes são um executável sem dependências de framework de testes:
+Run tests:
 
 ```powershell
 dotnet run --project .\tests\PSVR2iRacingHaptics.Tests -c Release
 ```
 
-## Teste em hardware real
+## Hardware validation
 
-Siga [docs/HARDWARE_TEST.md](docs/HARDWARE_TEST.md). O pacote foi compilado e
-validado com simuladores, mas este ambiente não possui PSVR2 nem iRacing para
-confirmar a vibração física, presença real do headset ou limiares por carro.
-O resultado exato da compilação e dos testes está em
-[docs/VALIDATION.md](docs/VALIDATION.md).
+Follow [docs/HARDWARE_TEST.md](docs/HARDWARE_TEST.md). The package is compiled
+and validated with simulators, but the build environment does not contain a
+PSVR2 or iRacing installation. Physical rumble, real headset presence and
+car-specific thresholds still require Windows hardware validation. Exact build
+and test results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-## Estrutura
+GitHub Actions runs the same release script on Windows for every pull request.
+A successful merge to `main` creates the versioned GitHub release only if that
+version does not already exist.
+
+## Project structure
 
 ```text
 src/PSVR2iRacingHaptics.Core
@@ -243,12 +393,19 @@ docs
 build
 ```
 
-Consulte [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para os componentes e o
-fluxo de falhas.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component boundaries and
+failure flow.
 
-## Licença e marcas
+## Contributing
 
-Este projeto usa licença MIT. PSVR2 Toolkit é um projeto externo e também
-possui seus próprios termos. PlayStation, PlayStation VR2, Sony, iRacing e
-SteamVR são marcas de seus respectivos proprietários. Este projeto não é
-oficial nem afiliado a eles.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). It explains the development
+environment, safety invariants, code boundaries, how to add verified iRacing
+signals/events, required tests and the pull-request checklist. Please do not
+invent telemetry variable names or weaken any mandatory `0 Hz` shutdown path.
+
+## License and trademarks
+
+This project is licensed under the MIT License. PSVR2 Toolkit is an external
+project with its own terms. PlayStation, PlayStation VR2, Sony, iRacing and
+SteamVR are trademarks of their respective owners. This project is unofficial
+and is not affiliated with them.

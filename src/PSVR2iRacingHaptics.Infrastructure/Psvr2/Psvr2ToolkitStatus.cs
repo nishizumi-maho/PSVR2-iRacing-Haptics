@@ -12,7 +12,7 @@ public sealed record Psvr2ToolkitStatus
     public bool DriverActive { get; init; }
     public bool? HeadsetAvailable { get; init; }
     public int? InitializationResult { get; init; }
-    public string ToolkitVersion { get; init; } = "não exposta pela C API";
+    public string ToolkitVersion { get; init; } = "not exposed by the C API";
     public bool NativeCallTimedOut { get; init; }
-    public string Message { get; init; } = "Não verificado";
+    public string Message { get; init; } = "Not checked";
 }

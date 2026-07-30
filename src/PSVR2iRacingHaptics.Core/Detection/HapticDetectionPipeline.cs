@@ -13,6 +13,7 @@ public sealed class HapticDetectionPipeline
     private readonly TelemetrySignalProcessor _processor = new();
     private readonly ImpactDetector _impactDetector = new();
     private readonly VerticalImpactDetector _verticalDetector = new();
+    private readonly IncidentDetector _incidentDetector = new();
 
     public PipelineResult Process(TelemetryFrame frame, AppSettings settings)
     {
@@ -20,14 +21,25 @@ public sealed class HapticDetectionPipeline
         {
             _impactDetector.Reset();
             _verticalDetector.Reset();
+            _incidentDetector.Reset();
         }
 
         var processed = _processor.Process(frame);
         var impact = _impactDetector.Evaluate(processed, settings.Impacts);
         var vertical = _verticalDetector.Evaluate(impact.Diagnostics, settings.Vertical);
-        var candidates = new[] { impact.Event, vertical.Event }
+        var physicalCandidates = new[] { impact.Event, vertical.Event }
             .Where(x => x is not null)
             .Cast<DetectedHapticEvent>()
+            .ToArray();
+        var incident = _incidentDetector.Evaluate(
+            vertical.Diagnostics,
+            settings.Incidents,
+            physicalCandidates);
+        var candidates = physicalCandidates
+            .Cast<DetectedHapticEvent?>()
+            .Append(incident.Event)
+            .Where(x => x is not null)
+            .Select(x => x!)
             .OrderByDescending(x => x.Priority)
             .ThenByDescending(x => x.Score)
             .ToArray();
@@ -43,5 +55,6 @@ public sealed class HapticDetectionPipeline
         _processor.Reset();
         _impactDetector.Reset();
         _verticalDetector.Reset();
+        _incidentDetector.Reset();
     }
 }

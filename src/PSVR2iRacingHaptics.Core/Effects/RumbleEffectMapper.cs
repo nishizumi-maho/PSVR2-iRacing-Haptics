@@ -5,9 +5,23 @@ namespace PSVR2iRacingHaptics.Core.Effects;
 
 public sealed class RumbleEffectMapper
 {
-    public RumbleEffect Map(DetectedHapticEvent detected, EffectSettings settings)
+    public RumbleEffect Map(
+        DetectedHapticEvent detected,
+        EffectSettings settings,
+        IncidentSettings? incidentSettings = null)
     {
-        var pattern = detected.Kind switch
+        var pattern = IsIncident(detected.Kind)
+            && incidentSettings?.PatternBasis == IncidentPatternBasis.InferredType
+                ? PatternForIncidentType(detected.IncidentType, settings)
+                : PatternForKind(detected.Kind, settings);
+
+        return FromPattern(EventName(detected), detected.Priority, pattern);
+    }
+
+    private static EffectPatternSettings PatternForKind(
+        HapticEventKind kind,
+        EffectSettings settings) =>
+        kind switch
         {
             HapticEventKind.RolloverImpact => settings.Rollover,
             HapticEventKind.StrongImpact => settings.StrongImpact,
@@ -17,11 +31,24 @@ public sealed class RumbleEffectMapper
             HapticEventKind.WheelDrop => settings.WheelDrop,
             HapticEventKind.Landing => settings.Landing,
             HapticEventKind.SevereVerticalCompression => settings.SevereCompression,
+            HapticEventKind.Incident1x => settings.Incident1x,
+            HapticEventKind.Incident2x => settings.Incident2x,
+            HapticEventKind.Incident4x => settings.Incident4x,
+            HapticEventKind.IncidentOther => settings.IncidentOther,
             _ => settings.LightImpact
         };
 
-        return FromPattern(EventName(detected), detected.Priority, pattern);
-    }
+    private static EffectPatternSettings PatternForIncidentType(
+        IncidentType type,
+        EffectSettings settings) =>
+        type switch
+        {
+            IncidentType.OffTrack => settings.IncidentOffTrack,
+            IncidentType.LossOfControl => settings.IncidentLossOfControl,
+            IncidentType.Contact => settings.IncidentContact,
+            IncidentType.Rollover => settings.IncidentRollover,
+            _ => settings.IncidentUnknown
+        };
 
     public RumbleEffect CreateManual(
         byte frequencyHz,
@@ -29,7 +56,7 @@ public sealed class RumbleEffectMapper
         int pulseCount,
         int gapMs) =>
         FromPattern(
-            "Teste manual",
+            "Manual test",
             110,
             new EffectPatternSettings
             {
@@ -69,14 +96,35 @@ public sealed class RumbleEffectMapper
 
     private static string EventName(DetectedHapticEvent detected) => detected.Kind switch
     {
-        HapticEventKind.LightImpact => "Batida leve",
-        HapticEventKind.MediumImpact => "Batida média",
-        HapticEventKind.StrongImpact => "Batida forte",
-        HapticEventKind.RolloverImpact => "Impacto em capotamento",
-        HapticEventKind.StrongKerb => "Zebra forte",
-        HapticEventKind.WheelDrop => "Queda de roda",
-        HapticEventKind.Landing => "Pouso do carro",
-        HapticEventKind.SevereVerticalCompression => "Compressão vertical severa",
+        HapticEventKind.LightImpact => "Light impact",
+        HapticEventKind.MediumImpact => "Medium impact",
+        HapticEventKind.StrongImpact => "Strong impact",
+        HapticEventKind.RolloverImpact => "Rollover impact",
+        HapticEventKind.StrongKerb => "Strong kerb",
+        HapticEventKind.WheelDrop => "Wheel drop",
+        HapticEventKind.Landing => "Car landing",
+        HapticEventKind.SevereVerticalCompression => "Severe vertical compression",
+        HapticEventKind.Incident1x => $"1x incident ({IncidentName(detected)})",
+        HapticEventKind.Incident2x => $"2x incident ({IncidentName(detected)})",
+        HapticEventKind.Incident4x => $"4x incident ({IncidentName(detected)})",
+        HapticEventKind.IncidentOther =>
+            $"{detected.IncidentPoints}x incident ({IncidentName(detected)})",
         _ => detected.Kind.ToString()
     };
+
+    private static string IncidentName(DetectedHapticEvent detected) =>
+        detected.IncidentType switch
+        {
+            IncidentType.OffTrack => "off track",
+            IncidentType.LossOfControl => "loss of control",
+            IncidentType.Contact => "contact",
+            IncidentType.Rollover => "rollover",
+            _ => "unclassified"
+        };
+
+    private static bool IsIncident(HapticEventKind kind) =>
+        kind is HapticEventKind.Incident1x
+            or HapticEventKind.Incident2x
+            or HapticEventKind.Incident4x
+            or HapticEventKind.IncidentOther;
 }

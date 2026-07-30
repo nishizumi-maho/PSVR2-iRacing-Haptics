@@ -1,0 +1,46 @@
+name: Validate and package
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-release:
+    name: Windows x64 release validation
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build, test and package
+        shell: pwsh
+        run: ./build.ps1 -Configuration Release -Runtime win-x64
+
+      - name: Upload portable package
+        uses: actions/upload-artifact@v7
+        with:
+          name: PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable
+          path: |
+            build/PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip
+            build/PSVR2-iRacing-Haptics-v1.0.0-win-x64-portable.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

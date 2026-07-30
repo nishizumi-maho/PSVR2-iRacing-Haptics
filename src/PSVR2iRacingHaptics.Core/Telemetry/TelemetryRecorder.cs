@@ -42,13 +42,13 @@ public sealed class TelemetryRecorder : IAsyncDisposable
         {
             if (_writer is not null)
             {
-                throw new InvalidOperationException("Já existe uma gravação em andamento.");
+                throw new InvalidOperationException("A recording is already in progress.");
             }
 
             var fullPath = Path.GetFullPath(path);
             Directory.CreateDirectory(
                 Path.GetDirectoryName(fullPath)
-                ?? throw new InvalidOperationException("Caminho de gravação inválido."));
+                ?? throw new InvalidOperationException("Invalid recording path."));
             _writer = new StreamWriter(new FileStream(
                 fullPath,
                 FileMode.Create,
@@ -57,7 +57,7 @@ public sealed class TelemetryRecorder : IAsyncDisposable
                 64 * 1024,
                 FileOptions.Asynchronous));
             CurrentPath = fullPath;
-            _logger.Info($"Gravação de telemetria iniciada: {fullPath}");
+            _logger.Info($"Telemetry recording started: {fullPath}");
         }
         finally
         {
@@ -96,7 +96,7 @@ public sealed class TelemetryRecorder : IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(marker))
         {
-            throw new ArgumentException("A marcação não pode ser vazia.", nameof(marker));
+            throw new ArgumentException("The marker cannot be empty.", nameof(marker));
         }
 
         var frame = _latestFrame;
@@ -124,7 +124,7 @@ public sealed class TelemetryRecorder : IAsyncDisposable
             await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
             await _writer.DisposeAsync().ConfigureAwait(false);
             _writer = null;
-            _logger.Info($"Gravação de telemetria encerrada: {CurrentPath}");
+            _logger.Info($"Telemetry recording stopped: {CurrentPath}");
         }
         finally
         {

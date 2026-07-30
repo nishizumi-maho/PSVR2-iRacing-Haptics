@@ -24,8 +24,8 @@ public sealed class TelemetryReplayClient : ITelemetryClient
 
     public bool IsConnected { get; private set; }
     public string StatusDescription => IsConnected
-        ? $"Reproduzindo {Path.GetFileName(_path)}"
-        : "Replay parado";
+        ? $"Replaying {Path.GetFileName(_path)}"
+        : "Replay stopped";
     public event EventHandler<TelemetryFrame>? FrameReceived;
     public event EventHandler<bool>? ConnectionChanged;
 
@@ -45,7 +45,7 @@ public sealed class TelemetryReplayClient : ITelemetryClient
     {
         IsConnected = true;
         ConnectionChanged?.Invoke(this, true);
-        _logger.Info($"Replay iniciado: {_path}; velocidade={_speedMultiplier:F1}x.");
+        _logger.Info($"Replay started: {_path}; speed={_speedMultiplier:F1}x.");
         DateTimeOffset? previousTimestamp = null;
 
         try
@@ -80,7 +80,7 @@ public sealed class TelemetryReplayClient : ITelemetryClient
         {
             IsConnected = false;
             ConnectionChanged?.Invoke(this, false);
-            _logger.Info("Replay encerrado.");
+            _logger.Info("Replay stopped.");
         }
     }
 

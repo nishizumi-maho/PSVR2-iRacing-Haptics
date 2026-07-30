@@ -1,8 +1,8 @@
 namespace PSVR2iRacingHaptics.Core.Models;
 
 /// <summary>
-/// Snapshot normalizado da telemetria do carro do jogador.
-/// Unidades seguem o SDK do iRacing: m/s, m/s², rad e rad/s.
+/// Normalized snapshot of the player's car telemetry.
+/// Units follow the iRacing SDK: m/s, m/s², rad and rad/s.
 /// </summary>
 public sealed record TelemetryFrame
 {
@@ -16,6 +16,7 @@ public sealed record TelemetryFrame
     public bool IsReplayPlaying { get; init; }
     public int SessionState { get; init; }
     public int EnterExitReset { get; init; }
+    public TelemetryContext Context { get; init; } = new();
 
     public float SpeedMps { get; init; }
     public float LatAccelMps2 { get; init; }
@@ -67,6 +68,7 @@ public sealed record TelemetryFrame
         {
             Timestamp = timestamp ?? DateTimeOffset.UtcNow,
             IsConnected = false,
-            IsValid = false
+            IsValid = false,
+            Context = new TelemetryContext()
         };
 }

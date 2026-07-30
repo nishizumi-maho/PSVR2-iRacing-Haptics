@@ -28,10 +28,10 @@ internal static class Program
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += async (_, eventArgs) =>
         {
-            logger.Error("Exceção não tratada na interface.", eventArgs.Exception);
-            await coordinator.EmergencyStopAsync("exceção não tratada na interface");
+            logger.Error("Unhandled UI exception.", eventArgs.Exception);
+            await coordinator.EmergencyStopAsync("unhandled UI exception");
             MessageBox.Show(
-                "Ocorreu um erro inesperado. A vibração foi desligada e o erro foi registrado.",
+                "An unexpected error occurred. Rumble was stopped and the error was logged.",
                 "PSVR2 iRacing Haptics",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);

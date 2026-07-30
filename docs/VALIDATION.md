@@ -1,16 +1,20 @@
-# Resultado da validação da versão 0.1.0
+# Version 1.0.0 validation
 
-Data: 29 de julho de 2026.
+Date: July 30, 2026.
 
-## Ambiente
+## Reproducible environment
 
-- SDK: .NET 8.0.423;
-- alvo do aplicativo: `net8.0-windows`, `win-x64`;
-- publicação: autocontida, sem trimming e sem single-file;
-- ambiente de compilação: contêiner Linux;
-- hardware físico indisponível: PSVR2, driver do Toolkit e iRacing.
+- GitHub-hosted Windows x64 runner;
+- .NET SDK 8.0.423 selected by `global.json`;
+- app target: `net8.0-windows`, runtime `win-x64`;
+- Release, self-contained, untrimmed, non-single-file publication;
+- the same `build.ps1` entry point used by contributors and the release
+  workflow.
 
-## Compilação
+The authoritative current run is available from the repository's
+[Validate and package workflow](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/workflows/ci.yml).
+
+## Build
 
 ```text
 Build succeeded.
@@ -18,34 +22,58 @@ Build succeeded.
     0 Error(s)
 ```
 
-O executável publicado foi identificado como `PE32+ executable (GUI) x86-64`
-para Windows. O pacote foi inspecionado para confirmar que não contém
-`psvr2_toolkit_capi.dll` nem executáveis do PSVR2 Toolkit.
+Warnings are treated as errors for every project.
 
-## Testes automatizados
+The packaging script also verifies:
+
+- the app executable exists and has an x86-64 PE machine header;
+- `portable.mode`, README and the executable are present in the ZIP;
+- every ZIP entry can be opened and decompressed;
+- neither `psvr2_toolkit_capi.dll` nor a PSVR2 Toolkit executable is bundled;
+- a SHA-256 sidecar is written for the exact portable ZIP.
+
+## Automated tests
 
 ```text
-Resultado: 25/25 testes aprovados.
+Result: 53/53 tests passed.
 ```
 
-Os testes cobrem persistência e validação de configuração, filtro e jerk,
-rejeição de aceleração e frenagem normais, zebra leve, colisões lateral,
-frontal e forte, capotamento, pouso, queda de roda, telemetria inválida,
-mapeamento de efeitos, prioridade e preempção, envio de `0 Hz`, cancelamento,
-parada de emergência, dispositivo indisponível, gravação/replay/calibração e
-ausência segura do Toolkit e do iRacing.
+Coverage includes:
 
-## Limite da validação
+- settings defaults, validation, round-trip persistence and legacy migrations;
+- factory/user profile creation, duplication, rename, delete and independent
+  configuration;
+- automatic rule exact/wildcard matching, opt-in behavior, priority,
+  specificity and persistence;
+- iRacing `SessionInfo` parsing and official header offsets;
+- filtering, jerk, warmup and invalid/reset telemetry;
+- rejection of normal acceleration, hard braking, wheel lock and light kerbs;
+- lateral/front/strong impacts, rollover, strong kerb, wheel drop, landing and
+  severe compression;
+- exact 1x/2x/4x incident deltas, off-track/loss-of-control/contact
+  classification, counter decreases and physical duplicate protection;
+- point-based and inferred-type incident waveforms;
+- independent event switches with detection retained while output is disabled;
+- effect safety limits, priority, preemption and rejection;
+- mandatory `0 Hz` after completion, cancellation and emergency stop;
+- unavailable Toolkit/iRacing behavior;
+- JSONL context/marker round trip, replay matching and bounded calibration
+  recommendations.
 
-O aplicativo WinForms não pôde ser iniciado neste ambiente Linux e nenhuma
-vibração física foi comandada. Portanto, ainda dependem de Windows e hardware
-real:
+## Validation limits
 
-- confirmação de que `0` desliga o motor no firmware usado;
-- sensação e correspondência física dos valores chamados de Hz;
-- detecção separada de headset conectado;
-- comportamento durante perda real do driver;
-- ajuste dos limiares por carro e pista;
-- convivência com outros clientes da C API.
+The hosted runner has no PSVR2, PSVR2 Toolkit driver or iRacing installation.
+The following remain real-hardware responsibilities:
 
-O roteiro reproduzível está em `docs/HARDWARE_TEST.md`.
+- confirm that `0` stops the motor with the installed headset firmware;
+- assess perceived sensation and the physical meaning of values called Hz;
+- validate Toolkit behavior if its driver disappears during a native call;
+- tune thresholds across real car/track combinations;
+- evaluate coexistence with any other C API rumble client.
+
+The executable is not Authenticode-signed. The release provides a SHA-256
+sidecar for integrity verification, not publisher authentication.
+
+The reproducible physical procedure and evidence checklist are in
+[HARDWARE_TEST.md](HARDWARE_TEST.md). No physical validation is implied by the
+automated test result.

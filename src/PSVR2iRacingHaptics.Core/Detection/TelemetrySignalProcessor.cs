@@ -107,6 +107,9 @@ public sealed class TelemetrySignalProcessor
         var incidentIncreased = frame.IncidentCount.HasValue
             && _lastIncidentCount.HasValue
             && frame.IncidentCount.Value > _lastIncidentCount.Value;
+        var incidentPointDelta = incidentIncreased
+            ? frame.IncidentCount!.Value - _lastIncidentCount!.Value
+            : 0;
 
         var timeInCar = (frame.Timestamp - _enteredCarAt).TotalMilliseconds;
         var result = new ProcessedTelemetry
@@ -140,7 +143,8 @@ public sealed class TelemetrySignalProcessor
             MaxRumblePitchHz = maxRumblePitch,
             WheelLockLikely = wheelLockLikely,
             BrakeRecentlyActive = _brakeHoldSeconds > 0,
-            IncidentIncreased = incidentIncreased
+            IncidentIncreased = incidentIncreased,
+            IncidentPointDelta = Math.Max(0, incidentPointDelta)
         };
 
         UpdateSlowBaseline(dt);

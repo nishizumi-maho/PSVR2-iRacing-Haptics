@@ -18,15 +18,15 @@ public sealed class SimulatedRumbleDevice : IHmdRumbleDevice
 
     public bool IsAvailable => _isAvailable;
     public string StatusDescription =>
-        _isAvailable ? "Dispositivo simulado disponível" : "Perda simulada de conexão";
+        _isAvailable ? "Simulated rumble device available" : "Simulated connection loss";
     public IReadOnlyCollection<SimulatedRumbleCommand> Commands => _commands.ToArray();
 
     public void SetAvailable(bool available)
     {
         _isAvailable = available;
         _logger.Info(available
-            ? "Dispositivo de vibração simulado reconectado."
-            : "Dispositivo de vibração simulado desconectado.");
+            ? "Simulated rumble device reconnected."
+            : "Simulated rumble device disconnected.");
     }
 
     public Task SetFrequencyAsync(byte frequencyHz, CancellationToken cancellationToken)
@@ -34,13 +34,13 @@ public sealed class SimulatedRumbleDevice : IHmdRumbleDevice
         cancellationToken.ThrowIfCancellationRequested();
         if (!_isAvailable)
         {
-            throw new InvalidOperationException("O dispositivo simulado está indisponível.");
+            throw new InvalidOperationException("The simulated device is unavailable.");
         }
 
         _commands.Enqueue(new SimulatedRumbleCommand(DateTimeOffset.UtcNow, frequencyHz));
         _logger.Info(frequencyHz == 0
-            ? "SIMULADOR — Rumble: OFF"
-            : $"SIMULADOR — Rumble: {frequencyHz} Hz");
+            ? "SIMULATOR — Rumble: OFF"
+            : $"SIMULATOR — Rumble: {frequencyHz} Hz");
         return Task.CompletedTask;
     }
 
