@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>PSVR2iRacingHaptics</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PSVR2iRacingHaptics.Core\PSVR2iRacingHaptics.Core.csproj" />
+    <ProjectReference Include="..\PSVR2iRacingHaptics.Infrastructure\PSVR2iRacingHaptics.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

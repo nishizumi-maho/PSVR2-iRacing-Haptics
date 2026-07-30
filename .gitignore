@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+data/
+build/portable/
+build/*.zip
+*.user
+*.suo
+*.log
+upstream/
