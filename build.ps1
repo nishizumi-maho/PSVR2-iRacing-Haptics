@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $solution = Join-Path $root "PSVR2iRacingHaptics.sln"
 $testProject = Join-Path $root "tests\PSVR2iRacingHaptics.Tests\PSVR2iRacingHaptics.Tests.csproj"
+$uiSmokeTestProject = Join-Path $root "tests\PSVR2iRacingHaptics.App.SmokeTests\PSVR2iRacingHaptics.App.SmokeTests.csproj"
 $appProject = Join-Path $root "src\PSVR2iRacingHaptics.App\PSVR2iRacingHaptics.App.csproj"
 $buildProperties = [xml](Get-Content (Join-Path $root "Directory.Build.props"))
 $version = [string]$buildProperties.Project.PropertyGroup.Version
@@ -50,6 +51,12 @@ Write-Host "Running tests..."
 dotnet run --project $testProject -c $Configuration --no-build
 if ($LASTEXITCODE -ne 0) {
     throw "Tests failed."
+}
+
+Write-Host "Running Windows interface startup smoke test..."
+dotnet run --project $uiSmokeTestProject -c $Configuration --no-build
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows interface startup smoke test failed."
 }
 
 if (Test-Path $publishDir) {

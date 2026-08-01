@@ -114,10 +114,9 @@ public sealed class TriggerEditorControl : UserControl
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
-            SplitterDistance = 330,
-            Panel1MinSize = 280,
-            Panel2MinSize = 560
+            FixedPanel = FixedPanel.Panel1
         };
+        split.SizeChanged += (_, _) => ApplyPreferredSplitterDistance(split);
         Controls.Add(split);
 
         var left = new TableLayoutPanel
@@ -243,6 +242,26 @@ public sealed class TriggerEditorControl : UserControl
         save.Click += async (_, _) => await SaveAsync();
         saveButtons.Controls.Add(save);
         editor.Controls.Add(saveButtons);
+    }
+
+    private static void ApplyPreferredSplitterDistance(SplitContainer split)
+    {
+        const int preferredListWidth = 330;
+        var maximumDistance =
+            split.ClientSize.Width - split.SplitterWidth - split.Panel2MinSize;
+        if (maximumDistance < split.Panel1MinSize)
+        {
+            return;
+        }
+
+        var distance = Math.Clamp(
+            preferredListWidth,
+            split.Panel1MinSize,
+            maximumDistance);
+        if (split.SplitterDistance != distance)
+        {
+            split.SplitterDistance = distance;
+        }
     }
 
     private void PopulateEnums()

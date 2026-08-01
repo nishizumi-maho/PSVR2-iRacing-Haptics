@@ -434,6 +434,10 @@ driver state, iRacing connection and in-car changes, detection values and
 reasons, suppressed event categories, rumble patterns, cancellations, errors
 and `Rumble: OFF`. Logs rotate at 5 MiB with four retained files.
 
+If the interface cannot be created, the executable shows the location of
+`startup-crash.log`. In portable mode it is written under `data\logs`; if that
+location is unavailable, the app falls back to the Windows temporary directory.
+
 ## Build
 
 The .NET 8 x64 SDK is required. `global.json` pins the tested 8.0.423 feature
@@ -447,7 +451,7 @@ The script restores, builds, runs the test executable, publishes a
 self-contained `win-x64` app and creates:
 
 ```text
-build\PSVR2-iRacing-Haptics-v1.1.0-win-x64-portable.zip
+build\PSVR2-iRacing-Haptics-v1.1.1-win-x64-portable.zip
 ```
 
 Run from source on Windows:
