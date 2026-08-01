@@ -102,14 +102,25 @@ if (-not $SkipInstallSmokeTest) {
     New-Item -ItemType Directory -Path $smokeRoot -Force | Out-Null
     try {
         Write-Host "Running silent installer smoke test..."
-        & $setupPath "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/SP-" `
-            "/DIR=$installDirectory" "/LOG=$installLog"
-        if ($LASTEXITCODE -ne 0) {
-            throw "The installer smoke test failed with exit code $LASTEXITCODE."
+        $installArguments = `
+            '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="{0}" /LOG="{1}"' `
+            -f $installDirectory, $installLog
+        $installProcess = Start-Process `
+            -FilePath $setupPath `
+            -ArgumentList $installArguments `
+            -Wait `
+            -PassThru
+        if ($installProcess.ExitCode -ne 0) {
+            throw "The installer smoke test failed with exit code $($installProcess.ExitCode)."
         }
 
         $installedExecutable = Join-Path $installDirectory "PSVR2iRacingHaptics.exe"
         if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
+            if (Test-Path -LiteralPath $installLog -PathType Leaf) {
+                Write-Host "Inno Setup install log:"
+                Get-Content -LiteralPath $installLog |
+                    ForEach-Object { Write-Host $_ }
+            }
             throw "The installer did not deploy the application executable."
         }
         if (Test-Path -LiteralPath (Join-Path $installDirectory "portable.mode")) {
@@ -123,9 +134,13 @@ if (-not $SkipInstallSmokeTest) {
         if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
             throw "The installer did not create an uninstaller."
         }
-        & $uninstaller "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART"
-        if ($LASTEXITCODE -ne 0) {
-            throw "The silent uninstaller smoke test failed with exit code $LASTEXITCODE."
+        $uninstallProcess = Start-Process `
+            -FilePath $uninstaller `
+            -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" `
+            -Wait `
+            -PassThru
+        if ($uninstallProcess.ExitCode -ne 0) {
+            throw "The silent uninstaller smoke test failed with exit code $($uninstallProcess.ExitCode)."
         }
     }
     finally {
