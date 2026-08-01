@@ -137,6 +137,7 @@ internal static class Program
             True(settings.Impacts.StrongEnabled);
             True(settings.Impacts.RolloverEnabled);
             False(settings.Vertical.LightKerbsEnabled);
+            True(settings.Application.CheckForUpdatesOnStartup);
         }
         finally
         {

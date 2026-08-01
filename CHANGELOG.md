@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.2 — 2026-08-01
+
+- Added a per-user Inno Setup installer for Windows x64 alongside the existing
+  self-contained portable ZIP.
+- Kept a stable installer AppId so future setup releases upgrade the existing
+  installation instead of creating duplicate entries.
+- Added Start menu and optional desktop shortcuts plus a normal uninstaller,
+  without requiring administrator privileges.
+- Kept installed data under `%LOCALAPPDATA%\PSVR2iRacingHaptics`; the installer
+  deliberately excludes `portable.mode` and never bundles PSVR2 Toolkit.
+- Enabled GitHub release checks by default for new settings while preserving
+  the saved choice of existing users.
+- Hardened release parsing so only the official repository release URL is
+  opened, added the GitHub API version header and used the running app version
+  in its user agent.
+- Added automated update-response validation and a silent install/uninstall
+  smoke test for the generated setup executable.
+- Updated CI and release publishing to validate and attach the installer, its
+  SHA-256 sidecar, the portable ZIP and its SHA-256 sidecar.
+
 ## 1.1.1 — 2026-07-30
 
 - Fixed the 1.1.0 launch regression caused by assigning an invalid telemetry

@@ -39,10 +39,18 @@ between applications.
 - no administrator privileges
 - no Python installation
 
-The portable ZIP is self-contained and does not require a separate .NET
-installation. Because it includes `portable.mode`, settings, logs and
-recordings are stored in the `data` folder beside the executable. If that file
-is removed, data is stored under `%LOCALAPPDATA%\PSVR2iRacingHaptics`.
+Both release formats are self-contained and do not require a separate .NET
+installation:
+
+- the Inno Setup installer installs for the current user under
+  `%LOCALAPPDATA%\Programs\PSVR2 iRacing Haptics`, creates a normal uninstaller
+  and stores settings, logs and recordings under
+  `%LOCALAPPDATA%\PSVR2iRacingHaptics`;
+- the portable ZIP includes `portable.mode`, so settings, logs and recordings
+  stay in the `data` folder beside the executable.
+
+Neither format requires administrator privileges. The setup and portable ZIP
+are published with separate `.sha256` sidecars.
 
 The executable is not Authenticode-signed, because this project does not have a
 code-signing certificate. Windows may display an Unknown publisher/SmartScreen
@@ -53,8 +61,10 @@ provided `.sha256` sidecar before running it.
 
 1. Start PSVR2 Toolkit and SteamVR normally.
 2. Confirm that the Toolkit driver is active.
-3. Extract the entire portable ZIP to a normal user folder.
-4. Run `PSVR2iRacingHaptics.exe`.
+3. Run the versioned `win-x64-setup.exe`, or extract the entire portable ZIP to
+   a normal user folder.
+4. Start **PSVR2 iRacing Haptics** from the Start menu or run
+   `PSVR2iRacingHaptics.exe` from the portable folder.
 5. Open **Comfort calibration**, select `PSVR2 Toolkit (real hardware)` on
    **Manual test**, and rate the guided steps as `Not felt`, `Clear` or
    `Uncomfortable`.
@@ -421,9 +431,11 @@ selected. User-profile paths and the Windows account name are redacted; review
 the ZIP before sharing it.
 
 The **Application** tab controls notification-area minimization, minimized
-startup, an optional current-user `HKCU\...\Run` entry and optional GitHub
-release checks. No service, scheduled task, silent download or automatic update
-is installed.
+startup, an optional current-user `HKCU\...\Run` entry and GitHub release
+checks. Release checks are enabled by default for new settings and can be
+disabled at any time. They compare the running version with this repository's
+latest public release and offer to open its official page; no service,
+scheduled task, silent download or automatic update is installed.
 
 ## Logs
 
@@ -451,7 +463,20 @@ The script restores, builds, runs the test executable, publishes a
 self-contained `win-x64` app and creates:
 
 ```text
-build\PSVR2-iRacing-Haptics-v1.1.1-win-x64-portable.zip
+build\PSVR2-iRacing-Haptics-v1.1.2-win-x64-portable.zip
+```
+
+With Inno Setup 6.3 or later installed, build and smoke-test the per-user
+installer:
+
+```powershell
+.\build-installer.ps1
+```
+
+It creates:
+
+```text
+build\installer\PSVR2-iRacing-Haptics-v1.1.2-win-x64-setup.exe
 ```
 
 Run from source on Windows:
@@ -480,9 +505,12 @@ PSVR2 or iRacing installation. Physical rumble, real headset presence and
 car-specific thresholds still require Windows hardware validation. Exact build
 and test results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-GitHub Actions runs the same release script on Windows for every pull request.
-A successful merge to `main` creates the versioned GitHub release only if that
-version does not already exist.
+GitHub Actions builds both distribution formats on Windows for every pull
+request. It also installs and uninstalls the setup silently in an isolated
+temporary directory, verifies that installed mode excludes `portable.mode`,
+and uploads both packages with their SHA-256 sidecars. A successful merge to
+`main` creates the versioned GitHub release only if that version does not
+already exist.
 
 ## Project structure
 
@@ -493,6 +521,7 @@ src/PSVR2iRacingHaptics.App
 tests/PSVR2iRacingHaptics.Tests
 docs
 build
+installer
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component boundaries and

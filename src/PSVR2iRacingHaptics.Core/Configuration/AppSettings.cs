@@ -164,7 +164,7 @@ public sealed class ApplicationBehaviorSettings
     public bool MinimizeToNotificationArea { get; set; } = true;
     public bool StartMinimized { get; set; }
     public bool StartWithWindows { get; set; }
-    public bool CheckForUpdatesOnStartup { get; set; }
+    public bool CheckForUpdatesOnStartup { get; set; } = true;
 }
 
 public sealed class EffectPatternSettings

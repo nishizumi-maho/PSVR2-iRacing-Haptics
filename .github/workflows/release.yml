@@ -30,6 +30,24 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          $candidates = @(
+            "${env:ProgramFiles}\Inno Setup 7\ISCC.exe"
+            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe"
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          )
+          $installed = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc -and -not $installed) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey could not install Inno Setup."
+            }
+          }
+
       - name: Read version
         id: version
         shell: pwsh
@@ -57,14 +75,21 @@ jobs:
         shell: pwsh
         run: ./build.ps1 -Configuration Release -Runtime win-x64
 
-      - name: Retain validated release package
+      - name: Build and smoke-test installer
+        if: steps.existing.outputs.exists != 'True'
+        shell: pwsh
+        run: ./build-installer.ps1 -Runtime win-x64
+
+      - name: Retain validated release packages
         if: steps.existing.outputs.exists != 'True'
         uses: actions/upload-artifact@v7
         with:
-          name: PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-portable
+          name: PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-packages
           path: |
             build/PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-portable.zip
             build/PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-portable.zip.sha256
+            build/installer/PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-setup.exe
+            build/installer/PSVR2-iRacing-Haptics-v${{ steps.version.outputs.version }}-win-x64-setup.exe.sha256
           if-no-files-found: error
           retention-days: 90
 
@@ -77,8 +102,10 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           $zip = "build/PSVR2-iRacing-Haptics-v$env:RELEASE_VERSION-win-x64-portable.zip"
-          $hash = "$zip.sha256"
-          gh release create $env:RELEASE_TAG $zip $hash `
+          $zipHash = "$zip.sha256"
+          $setup = "build/installer/PSVR2-iRacing-Haptics-v$env:RELEASE_VERSION-win-x64-setup.exe"
+          $setupHash = "$setup.sha256"
+          gh release create $env:RELEASE_TAG $zip $zipHash $setup $setupHash `
             --repo $env:GITHUB_REPOSITORY `
             --target $env:GITHUB_SHA `
             --title "PSVR2 iRacing Haptics $env:RELEASE_VERSION" `

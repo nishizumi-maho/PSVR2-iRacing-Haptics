@@ -16,5 +16,15 @@ Its public header carries the 3-Clause BSD License and copyright of iRacing.com
 Motorsport Simulations, LLC. This project implements the reader directly and
 does not redistribute SDK binaries.
 
+## Inno Setup
+
+The optional Windows setup executable is built with Inno Setup. Its installer
+runtime remains covered by the Inno Setup license and retains the upstream
+copyright and project references embedded by the compiler.
+
+- project: https://jrsoftware.org/isinfo.php
+- license: https://jrsoftware.org/files/is/license.txt
+- copyright: Jordan Russell and Martijn Laan
+
 PlayStation, PlayStation VR2, Sony, iRacing and SteamVR are trademarks of their
 respective owners.

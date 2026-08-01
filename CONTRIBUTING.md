@@ -9,6 +9,7 @@ shutdown behavior take priority over feature count.
 - Windows 10/11 x64;
 - .NET 8 SDK;
 - PowerShell 7 or Windows PowerShell;
+- Inno Setup 6.3 or later, when building the installer locally;
 - Git;
 - PSVR2 Toolkit, SteamVR, iRacing and a headset only for optional hardware
   validation.
@@ -19,9 +20,18 @@ Clone the repository and run:
 .\build.ps1
 ```
 
-That one command restores dependencies, builds the complete solution, runs the
-test executable, publishes a self-contained `win-x64` application, creates the
-portable ZIP and writes its SHA-256 file.
+That command restores dependencies, builds the complete solution, runs the
+test executables, publishes a self-contained `win-x64` application, creates the
+portable ZIP and writes its SHA-256 file. To compile and smoke-test the
+installer from that publication, run:
+
+```powershell
+.\build-installer.ps1
+```
+
+The installer build performs a silent install and uninstall under a unique
+temporary path, checks the deployed executable and confirms that installed
+mode does not contain `portable.mode`.
 
 `global.json` selects the tested .NET 8.0.423 SDK feature band. Install that
 SDK (or a later 8.0.4xx patch) even if a newer major SDK is already present.
