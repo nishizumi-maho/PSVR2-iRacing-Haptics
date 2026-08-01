@@ -3,6 +3,7 @@ obj/
 .vs/
 data/
 build/portable/
+build/installer/
 build/*.zip
 build/*.sha256
 *.user

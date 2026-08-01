@@ -18,7 +18,8 @@ internal static class Program
         {
             await MainWindowCanBeCreatedAsync(directory);
             StartupFailureCreatesDiagnostic(directory);
-            Console.WriteLine("Result: 2/2 Windows startup smoke checks passed.");
+            GitHubReleaseResponseIsValidated();
+            Console.WriteLine("Result: 3/3 Windows application checks passed.");
             return 0;
         }
         catch (Exception exception)
@@ -92,6 +93,46 @@ internal static class Program
                 "The startup diagnostic did not contain the exception.");
         }
         Console.WriteLine("[OK] Early startup failures create a diagnostic log.");
+    }
+
+    private static void GitHubReleaseResponseIsValidated()
+    {
+        const string newerRelease = """
+            {
+              "tag_name": "v1.2.0",
+              "html_url": "https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/releases/tag/v1.2.0"
+            }
+            """;
+        var available = ApplicationIntegrationService.ParseLatestRelease(
+            newerRelease,
+            "1.1.2+local-build");
+        if (!available.UpdateAvailable
+            || available.LatestVersion != "1.2.0"
+            || !available.ReleaseUrl.EndsWith(
+                "/releases/tag/v1.2.0",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "A newer official GitHub release was not recognized correctly.");
+        }
+
+        const string currentReleaseWithUntrustedUrl = """
+            {
+              "tag_name": "v1.1.2",
+              "html_url": "https://example.invalid/untrusted-download.exe"
+            }
+            """;
+        var current = ApplicationIntegrationService.ParseLatestRelease(
+            currentReleaseWithUntrustedUrl,
+            "1.1.2");
+        if (current.UpdateAvailable
+            || current.ReleaseUrl !=
+                "https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/releases/latest")
+        {
+            throw new InvalidOperationException(
+                "The release check did not reject an untrusted release URL.");
+        }
+        Console.WriteLine("[OK] GitHub release responses and URLs are validated.");
     }
 
     private static void TryDeleteDirectory(string directory)

@@ -31,16 +31,40 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          $candidates = @(
+            "${env:ProgramFiles}\Inno Setup 7\ISCC.exe"
+            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe"
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          )
+          $installed = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc -and -not $installed) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey could not install Inno Setup."
+            }
+          }
+
       - name: Build, test and package
         shell: pwsh
         run: ./build.ps1 -Configuration Release -Runtime win-x64
 
-      - name: Upload portable package
+      - name: Build and smoke-test installer
+        shell: pwsh
+        run: ./build-installer.ps1 -Runtime win-x64
+
+      - name: Upload portable package and installer
         uses: actions/upload-artifact@v7
         with:
-          name: PSVR2-iRacing-Haptics-win-x64-portable
+          name: PSVR2-iRacing-Haptics-win-x64-packages
           path: |
             build/PSVR2-iRacing-Haptics-v*-win-x64-portable.zip
             build/PSVR2-iRacing-Haptics-v*-win-x64-portable.zip.sha256
+            build/installer/PSVR2-iRacing-Haptics-v*-win-x64-setup.exe
+            build/installer/PSVR2-iRacing-Haptics-v*-win-x64-setup.exe.sha256
           if-no-files-found: error
           retention-days: 30

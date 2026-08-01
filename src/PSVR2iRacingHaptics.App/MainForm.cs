@@ -1305,14 +1305,14 @@ public sealed class MainForm : Form
         _started = true;
         await SafeUiAction(() => _coordinator.StartAsync());
         var application = _coordinator.Settings.Application;
-        if (application.CheckForUpdatesOnStartup)
-        {
-            await CheckForUpdatesAsync(showCurrent: false);
-        }
         if (application.StartMinimized)
         {
             WindowState = FormWindowState.Minimized;
             HideToNotificationArea();
+        }
+        if (application.CheckForUpdatesOnStartup)
+        {
+            await CheckForUpdatesAsync(showCurrent: false);
         }
     }
 

@@ -35,8 +35,8 @@
   logic in the UI;
 - `GlobalInputService`: registered keyboard shortcuts and joystick-button edge
   polling;
-- `ApplicationIntegrationService`: opt-in update check and current-user
-  startup entry;
+- `ApplicationIntegrationService`: validated official-release check and
+  current-user startup entry;
 - `MainForm` plus focused controls: English WinForms interface.
 
 ## Data flow
