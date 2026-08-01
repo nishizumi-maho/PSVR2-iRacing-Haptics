@@ -1,6 +1,6 @@
-# Version 1.1.0 validation
+# Version 1.1.2 validation
 
-Date: July 30, 2026.
+Date: August 1, 2026.
 
 ## Reproducible environment
 
@@ -8,10 +8,13 @@ Date: July 30, 2026.
 - .NET SDK 8.0.423 selected by `global.json`;
 - app target: `net8.0-windows`, runtime `win-x64`;
 - Release, self-contained, untrimmed, non-single-file publication;
-- the same `build.ps1` entry point used by contributors and the release
-  workflow.
+- Inno Setup 6.7.0 for the setup executable;
+- the same `build.ps1` and `build-installer.ps1` entry points used by
+  contributors and the release workflow.
 
-The authoritative current run is available from the repository's
+The v1.1.2 pull-request checkpoint is
+[workflow run 30713267519](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/runs/30713267519).
+The authoritative current run is always available from the repository's
 [Validate and package workflow](https://github.com/nishizumi-maho/PSVR2-iRacing-Haptics/actions/workflows/ci.yml).
 
 ## Build
@@ -32,14 +35,53 @@ The packaging script also verifies:
 - neither `psvr2_toolkit_capi.dll` nor a PSVR2 Toolkit executable is bundled;
 - a SHA-256 sidecar is written for the exact portable ZIP.
 
-The 1.1.0 checkpoint contained 480 portable entries. The workflow artifact
-contains the portable ZIP and its SHA-256 sidecar; the release workflow repeats
-the complete build rather than promoting an unverified local package.
+The v1.1.2 checkpoint contained 480 portable entries. The portable ZIP was
+72,425,789 bytes and its SHA-256 was:
+
+```text
+2cee087f9ec9de6a883a296df7e473aa7cb5b3281758d7dd36ba3be245ecc899
+```
+
+## Installer validation
+
+The Inno Setup build produced a 51,363,302-byte setup executable. The workflow
+then:
+
+- installed it silently into a unique current-user temporary directory;
+- confirmed that `PSVR2iRacingHaptics.exe`, README and the uninstaller exist;
+- confirmed that installed mode does not contain `portable.mode`;
+- confirmed that the setup is configured for current-user, non-admin mode;
+- uninstalled it silently and received a successful exit code;
+- wrote and independently verified its SHA-256 sidecar.
+
+The setup SHA-256 for the pull-request checkpoint was:
+
+```text
+d1a1bf3f76fc304052ad5edb2d04cb38732d0c44cc059508bb4d7ab8ad1e8104
+```
+
+The setup bootstrap produced by Inno 6 is PE32, while its packaged application
+is x86-64 and the script is gated to `x64compatible` systems with 64-bit install
+mode. The installer AppId is fixed so later versions update the same installed
+product.
+
+The workflow artifact contains the setup, portable ZIP and both SHA-256
+sidecars. Its GitHub artifact digest was
+`sha256:67445a2d3731b5c3c6657b8b8b2b08bd289a2717029d61bea8c0e1bde94bbee3`.
+The release workflow repeats the complete build after merge rather than
+promoting this pull-request checkpoint, so the final release hashes may differ
+and its attached sidecars are authoritative.
 
 ## Automated tests
 
 ```text
 Result: 74/74 tests passed.
+```
+
+Windows application checks:
+
+```text
+Result: 3/3 Windows application checks passed.
 ```
 
 Coverage includes:
@@ -72,6 +114,8 @@ Coverage includes:
 - bounded physical comfort calibration and explicit no-range results;
 - redaction and reviewed contents of diagnostic support bundles;
 - complete, unique default keyboard/steering-wheel input actions;
+- default-enabled release checks for new settings, semantic version comparison
+  and rejection of non-official release URLs;
 - effect safety limits, priority, preemption and rejection;
 - mandatory `0 Hz` after completion, cancellation and emergency stop;
 - unavailable Toolkit/iRacing behavior;
